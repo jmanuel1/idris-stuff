@@ -1,6 +1,7 @@
 import System.File.Handle
 import System.File.ReadWrite
 import Data.SortedSet
+import Data.String
 
 -- untyped lambda calculus
 
@@ -57,10 +58,11 @@ lcToC abs@(Abs str body) =
   let (bodyDecls, bodyExpr) = lcToC body
       closedOverVars = SortedSet.toList $ freeVars abs
       envTypeDecl = Struct (map (\var => Var "int" var Nothing) closedOverVars) "lc_closure_env"
-      varDecls = map (\var => DeclStmt $ Var "int" var (Just ("env." ++ var))) closedOverVars in
+      varDecls = map (\var => DeclStmt $ Var "int" var (Just ("env." ++ var))) closedOverVars
+      envInit = joinBy ", " closedOverVars in
       (
         [envTypeDecl, Fun "int" "TODO_names" [MkCArg "int" str, MkCArg "lc_closure_env" "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])],
-        "lc_closure(TODO_names, TODO_compute_closure)"
+        "lc_closure(TODO_names, (lc_closure_env){ " ++ envInit ++ " })"
       )
 lcToC (Extern str) = ([], str)
 
