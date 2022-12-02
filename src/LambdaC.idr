@@ -70,12 +70,14 @@ lcToC (App x y) = do
   pure (xDecls ++ yDecls, "lc_app(" ++ xExp ++ ", " ++ yExp ++ ")")
 lcToC abs@(Abs str body) = do
   envTypeName <- genName "closure_env"
+  closureTypeName <- genName "closure"
   (bodyDecls, bodyExpr) <- lcToC body
   let closedOverVars = SortedSet.toList $ freeVars abs
       envTypeDecl = Struct (map (\var => Var "int" var Nothing) closedOverVars) envTypeName
+      closureTypeDecl = Struct [Var "void *" "function" Nothing, Var ("struct " ++ envTypeName) "env" Nothing] closureTypeName
       varDecls = map (\var => DeclStmt $ Var "int" var (Just ("env." ++ var))) closedOverVars
       envInit = joinBy ", " closedOverVars
-  pure ([envTypeDecl, Fun "int" "TODO_names" [MkCArg "int" str, MkCArg ("struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])], "lc_closure(TODO_names, (struct " ++ envTypeName ++ "){ " ++ envInit ++ " })")
+  pure ([envTypeDecl, closureTypeDecl, Fun "int" "TODO_names" [MkCArg "int" str, MkCArg ("struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])], "(struct " ++ closureTypeName ++ "){TODO_names, (struct " ++ envTypeName ++ "){" ++ envInit ++ "}}")
 lcToC (Extern str) = pure ([], str)
 
 lcToCProgram : MonadState Nat m => LC -> m C
