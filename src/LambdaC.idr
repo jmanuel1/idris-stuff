@@ -1,3 +1,5 @@
+import Control.Monad.Identity
+import Control.Monad.State
 import System.File.Handle
 import System.File.ReadWrite
 import Data.SortedSet
@@ -48,30 +50,38 @@ namespace C
   C : Type
   C = List CDecl
 
-lcToC : LC -> (C, CExp)
-lcToC (Var str) = ([{-Var "int" str ("args." ++ str)-}], str)
-lcToC (App x y) =
-  let (xDecls, xExp) = lcToC x
-      (yDecls, yExp) = lcToC y in
-      (xDecls ++ yDecls, "lc_app(" ++ xExp ++ ", " ++ yExp ++ ")")
-lcToC abs@(Abs str body) =
-  let (bodyDecls, bodyExpr) = lcToC body
-      closedOverVars = SortedSet.toList $ freeVars abs
-      envTypeDecl = Struct (map (\var => Var "int" var Nothing) closedOverVars) "lc_closure_env"
+GLOBAL_NAME_PREFIX : String
+GLOBAL_NAME_PREFIX = "lc_"
+
+incrementCounter : MonadState Nat m => m ()
+incrementCounter = modify (+ 1)
+
+genName : MonadState Nat m => String -> m String
+genName root = do
+  incrementCounter
+  suffix <- map cast get
+  pure (GLOBAL_NAME_PREFIX ++ root ++ "_" ++ suffix)
+
+lcToC : MonadState Nat m => LC -> m (C, CExp)
+lcToC (Var str) = pure ([{-Var "int" str ("args." ++ str)-}], str)
+lcToC (App x y) = do
+  (xDecls, xExp) <- lcToC x
+  (yDecls, yExp) <- lcToC y
+  pure (xDecls ++ yDecls, "lc_app(" ++ xExp ++ ", " ++ yExp ++ ")")
+lcToC abs@(Abs str body) = do
+  envTypeName <- genName "closure_env"
+  (bodyDecls, bodyExpr) <- lcToC body
+  let closedOverVars = SortedSet.toList $ freeVars abs
+      envTypeDecl = Struct (map (\var => Var "int" var Nothing) closedOverVars) envTypeName
       varDecls = map (\var => DeclStmt $ Var "int" var (Just ("env." ++ var))) closedOverVars
-      envInit = joinBy ", " closedOverVars in
-      (
-        [envTypeDecl, Fun "int" "TODO_names" [MkCArg "int" str, MkCArg "lc_closure_env" "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])],
-        "lc_closure(TODO_names, (lc_closure_env){ " ++ envInit ++ " })"
-      )
-lcToC (Extern str) = ([], str)
+      envInit = joinBy ", " closedOverVars
+  pure ([envTypeDecl, Fun "int" "TODO_names" [MkCArg "int" str, MkCArg ("struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])], "lc_closure(TODO_names, (struct " ++ envTypeName ++ "){ " ++ envInit ++ " })")
+lcToC (Extern str) = pure ([], str)
 
-lcToCProgram : LC -> C
-lcToCProgram lc =
-  let (decls, exp) = lcToC lc in
-    decls ++ [Fun "void" "main" [] [RawStmt ("return " ++ exp)]]
-
--- fMust : IO (Either FileError ()) -> IO ()
+lcToCProgram : MonadState Nat m => LC -> m C
+lcToCProgram lc = do
+  (decls, exp) <- lcToC lc
+  pure $ decls ++ [Fun "void" "main" [] [RawStmt ("return " ++ exp)]]
 
 writeCArg : File -> CArg -> IO ()
 writeCArg file arg =
@@ -107,7 +117,7 @@ main : IO ()
 main = do
   let selfApply = Abs "x" (Var "x" `App` Var "x")
   let omega = selfApply `App` selfApply
-  let cOmega = lcToCProgram omega
+  let cOmega = evalState Z $ lcToCProgram omega
   ignore $ withFile "out.c" WriteTruncate
     (\err => printLn err)
     (\file => map pure $ writeC file cOmega)
