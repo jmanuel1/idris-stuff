@@ -119,13 +119,15 @@ lcToC abs@(Abs arg argType body) = do
   closureTypeName <- genName "closure"
   (bodyDecls, bodyExpr, bodyType) <- enterBlock arg argType $ lcToC body
   let closedOverVars = SortedSet.toList $ freeVars abs
-      envTypeDecl = Struct (map (\var => Var "int" var Nothing) closedOverVars) envTypeName
-      envType = RawType $ "struct " ++ envTypeName
+  closedOverVarTypes <- traverse (\var => getCType var) closedOverVars
+  let envTypeDecl = Struct (map (\(v, t) => Var t v Nothing) $ zip closedOverVars closedOverVarTypes) envTypeName
+  funName <- genName "lambda_abstraction"
+  let envType = RawType $ "struct " ++ envTypeName
       closureTypeDecl = Struct [FunPtr bodyType "function" [argType, envType], Var envType "env" Nothing] closureTypeName
-      varDecls = map (\var => DeclStmt $ Var argType var (Just ("env." ++ var))) closedOverVars
+      varDecls = map (\(var, t) => DeclStmt $ Var t var (Just ("env." ++ var))) $ zip closedOverVars closedOverVarTypes
       envInit = joinBy ", " closedOverVars
-      funDecl = Fun "int" "TODO_names" [MkCArg "int" arg, MkCArg (RawType $ "struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])
-      closureExp = "(struct " ++ closureTypeName ++ "){TODO_names, (struct " ++ envTypeName ++ "){" ++ envInit ++ "}}"
+      funDecl = Fun bodyType funName [MkCArg argType arg, MkCArg (RawType $ "struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])
+      closureExp = "(struct " ++ closureTypeName ++ "){" ++ funName ++ ", (struct " ++ envTypeName ++ "){" ++ envInit ++ "}}"
   pure ([envTypeDecl, closureTypeDecl, funDecl], closureExp, FunType argType bodyType $ "struct " ++ closureTypeName)
 lcToC fix@(Fix var body argType retType) = do
   -- rewrite f: \fixf => \x => <body containing fixf> to recf := \x => <body containing recf>
@@ -138,9 +140,10 @@ lcToC fix@(Fix var body argType retType) = do
   (bodyDecls, bodyExpr, bodyType) <- enterBlock "x" argType $ lcToC bodyCall
   envTypeName <- genName "closure_env"
   let closedOverVars = SortedSet.toList $ freeVars fix
-  let varDecls = map (\var => DeclStmt $ Var "int" var (Just ("env." ++ var))) closedOverVars
+  closedOverVarTypes <- traverse (\var => getCType var) closedOverVars
+  let varDecls = map (\(var, t) => DeclStmt $ Var t var (Just ("env." ++ var))) $ zip closedOverVars closedOverVarTypes
       envInit = joinBy ", " closedOverVars
-      envTypeDecl = Struct (map (\var => Var "int" var Nothing) closedOverVars) envTypeName
+      envTypeDecl = Struct (map (\(v, t) => Var t v Nothing) $ zip closedOverVars closedOverVarTypes) envTypeName
       envType = RawType $ "struct " ++ envTypeName
       closureTypeDecl = Struct [FunPtr bodyType "function" [argType, envType], Var envType "env" Nothing] closureTypeName
   let funDecl = Fun retType recFName [MkCArg argType "x", MkCArg (RawType $ "struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])
@@ -150,8 +153,8 @@ lcToC (Extern str type) = pure ([], str, type)
 
 lcToCProgram : MonadState (Nat, SortedMap String CType) m => MonadError String m => LC -> m C
 lcToCProgram lc = do
-  (decls, exp, _) <- lcToC lc
-  pure $ decls ++ [Fun "void" "main" [] [RawStmt ("return " ++ exp)]]
+  (decls, exp, type) <- lcToC lc
+  pure $ decls ++ [Fun type "main" [] [RawStmt ("return " ++ exp)]]
 
 writeCType : File -> CType -> IO ()
 writeCType file (RawType type) = ignore (fPutStr file type)
