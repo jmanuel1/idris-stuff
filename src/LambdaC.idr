@@ -2,6 +2,7 @@ import Control.Monad.Error.Either
 import Control.Monad.Error.Interface
 import Control.Monad.Identity
 import Control.Monad.State
+import Control.Monad.Writer
 import System
 import System.File.Handle
 import System.File.ReadWrite
@@ -103,7 +104,7 @@ enterBlock var type block = do
   modify (mapSnd (const context))
   pure result
 
-lcToC : MonadState (Nat, SortedMap String CType) m => MonadError String m => LC -> m (C, CExp, CType)
+lcToC : MonadState (Nat, SortedMap String CType) m => MonadError String m => MonadWriter (List CDecl) m => LC -> m (C, CExp, CType)
 lcToC (Var str) = do
   type <- getCType str
   pure ([], str, type)
@@ -128,7 +129,8 @@ lcToC abs@(Abs arg argType body) = do
       envInit = joinBy ", " closedOverVars
       funDecl = Fun bodyType funName [MkCArg argType arg, MkCArg (RawType $ "struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])
       closureExp = "(struct " ++ closureTypeName ++ "){" ++ funName ++ ", (struct " ++ envTypeName ++ "){" ++ envInit ++ "}}"
-  pure ([envTypeDecl, closureTypeDecl, funDecl], closureExp, FunType argType bodyType $ "struct " ++ closureTypeName)
+  tell [envTypeDecl, closureTypeDecl, funDecl]
+  pure ([], closureExp, FunType argType bodyType $ "struct " ++ closureTypeName)
 lcToC fix@(Fix var body argType retType) = do
   -- rewrite f: \fixf => \x => <body containing fixf> to recf := \x => <body containing recf>
   -- this is safe because nothing outside of this expression can call (\var => body)
@@ -148,13 +150,14 @@ lcToC fix@(Fix var body argType retType) = do
       closureTypeDecl = Struct [FunPtr bodyType "function" [argType, envType], Var envType "env" Nothing] closureTypeName
   let funDecl = Fun retType recFName [MkCArg argType "x", MkCArg (RawType $ "struct " ++ envTypeName) "env"] (map DeclStmt bodyDecls ++ varDecls ++ [RawStmt ("return " ++ bodyExpr)])
   let resultClosureExp = "(struct " ++ closureTypeName ++ "){" ++ recFName ++ ", (struct " ++ envTypeName ++ "){" ++ envInit ++ "}}"
-  pure ([envTypeDecl, closureTypeDecl, funDecl], resultClosureExp, FunType argType retType $ "struct " ++ closureTypeName)
+  tell [envTypeDecl, closureTypeDecl, funDecl]
+  pure ([], resultClosureExp, FunType argType retType $ "struct " ++ closureTypeName)
 lcToC (Extern str type) = pure ([], str, type)
 
 lcToCProgram : MonadState (Nat, SortedMap String CType) m => MonadError String m => LC -> m C
 lcToCProgram lc = do
-  (decls, exp, type) <- lcToC lc
-  pure $ decls ++ [Fun type "main" [] [RawStmt ("return " ++ exp)]]
+  ((decls, exp, type), globalDecls) <- runWriterT $ lcToC {m=WriterT (List CDecl) m} lc
+  pure $ globalDecls ++ [Fun type "main" [] $ map DeclStmt decls ++ [RawStmt ("return " ++ exp)]]
 
 writeCType : File -> CType -> IO ()
 writeCType file (RawType type) = ignore (fPutStr file type)
