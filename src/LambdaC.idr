@@ -1,3 +1,5 @@
+module LambdaC
+
 import Control.Monad.Error.Either
 import Control.Monad.Error.Interface
 import Control.Monad.Identity
@@ -15,6 +17,7 @@ namespace C
   public export
   data CType = RawType String | FunType CType CType String
 
+  export
   FromString CType where
     fromString = RawType
 
@@ -70,6 +73,7 @@ namespace C
     public export
     data CStmt = RawStmt String | DeclStmt CDecl
 
+    export
     FromString CStmt where
       fromString x = RawStmt x
 
@@ -176,30 +180,31 @@ mutual
   writeCStmt file (RawStmt str) = ignore (fPutStr file (str ++ ";\n"))
   writeCStmt file (DeclStmt x) = do
     writeCDecl file x
-    ignore (fPutStr file ";\n")
 
+  -- includes final semicolon, when appropriate
   writeCDecl : File -> CDecl -> IO ()
   writeCDecl file (Fun type name args body) = do
-    ignore (fPutStr file (type ++ " " ++ name ++ "("))
-    for_ args (\arg => writeCArg file arg >> ignore (fPutStr file ", "))
+    writeCType file type
+    ignore (fPutStr file (" " ++ name ++ "("))
+    sequence_ $ intersperse (ignore (fPutStr file ", ")) (map (writeCArg file) args)
     ignore (fPutStr file ") {\n")
     for_ body (writeCStmt file)
     ignore (fPutStr file "}\n\n")
   writeCDecl file (Struct decls typename) = do
     ignore (fPutStr file ("struct " ++ typename ++ "{\n"))
-    for_ decls (\decl => writeCDecl file decl >> ignore (fPutStr file ";\n"))
+    for_ decls (\decl => writeCDecl file decl)
     ignore (fPutStr file "};\n\n")
   writeCDecl file (Var type name (Just init)) = do
     writeCType file type
-    ignore (fPutStr file (" " ++ name ++ " = " ++ init))
+    ignore (fPutStr file (" " ++ name ++ " = " ++ init ++ ";\n"))
   writeCDecl file (Var type name Nothing) = do
     writeCType file type
-    ignore (fPutStr file (" " ++ name))
+    ignore (fPutStr file (" " ++ name ++ ";\n"))
   writeCDecl file (FunPtr retType name argTypes) = do
     writeCType file retType
     ignore (fPutStr file (" (*" ++ name ++ ")("))
     sequence_ $ intersperse (ignore (fPutStr file ", ")) (map (writeCType file) argTypes)
-    ignore (fPutStr file ")")
+    ignore (fPutStr file ");\n")
 
 writeC : File -> C -> IO ()
 writeC file c = for_ c (writeCDecl file)
