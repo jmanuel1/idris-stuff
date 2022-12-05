@@ -46,7 +46,10 @@ namespace LC
     App (sub var to wholeFun) (sub var to wholeArg)
   sub var to w@(Abs varWhole typeWhole bodyWhole) = if var == varWhole
     then w
-    else Abs varWhole typeWhole (sub var to bodyWhole)
+    else
+      -- capture avoidance
+      let to' = sub varWhole (Var (varWhole ++ "_")) to in
+        Abs varWhole typeWhole (sub var to' bodyWhole)
   sub var to e@(Fix fVar body argType retType) = if var == fVar
     then e
     else Fix fVar (sub var to body) argType retType
