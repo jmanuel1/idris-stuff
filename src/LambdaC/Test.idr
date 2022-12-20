@@ -5,6 +5,7 @@ import Control.Monad.Error.Interface
 import Control.Monad.State
 import Data.SortedMap
 import LambdaC
+import LambdaC.Effect
 import System
 import System.File.Handle
 import System.File.ReadWrite
@@ -98,6 +99,20 @@ main = do
   testExitCode <- System.system "./test"
   when (testExitCode /= 0)
     (die "compiled program did not return 0")
+  contPSZero <- case toContPassingStyleConcrete "int" zero of
+    Right t => pure t
+    Left err => die err
+  compiledContPSZero <- eitherT die pure (evalStateT (Z, the (SortedMap String CType) empty) $ lcToCProgram contPSZero)
+  let contPSZeroWithPrims = prims ++ compiledContPSZero
+  ignore $ withFile "test-contps.c" WriteTruncate
+    (die . show)
+    (\file => the (IO (Either () ())) $ map Right $ writeC file contPSZeroWithPrims)
+  ccExitCode <- System.system "cc ./test-contps.c -o test-contps"
+  when (ccExitCode /= 0)
+    (die "(contps) C compilation failed")
+  testExitCode <- System.system "./test-contps"
+  when (testExitCode /= 0)
+    (die "(contps) compiled program did not return 0")
 
 -- true : CType -> LC
 -- true t = Abs "t" t (Abs "f" t (Var "t"))

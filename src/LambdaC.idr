@@ -5,21 +5,33 @@ import Control.Monad.Error.Interface
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
-import System
-import System.File.Handle
-import System.File.ReadWrite
 import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
+import Deriving.Show
+import System
+import System.File.Handle
+import System.File.ReadWrite
+
+%language ElabReflection
 
 namespace C
   public export
-  data CType = RawType String | FunType CType CType String
+  data CType = RawType String | FunType CType CType String | ExternType CType
+
+  export %hint
+  cTypeShow : Show CType
+  cTypeShow = %runElab derive
 
   export
   FromString CType where
     fromString = RawType
+
+  getFunctionType : CType -> Maybe CType
+  getFunctionType t@(FunType _ _ _) = Just t
+  getFunctionType (ExternType t) = getFunctionType t
+  getFunctionType _ = Nothing
 
 -- lambda calculus
 
@@ -91,6 +103,9 @@ namespace C
 GLOBAL_NAME_PREFIX : String
 GLOBAL_NAME_PREFIX = "lc_"
 
+CompilerState : Type
+CompilerState = (Nat, SortedMap String CType)
+
 incrementCounter : MonadState (Nat, SortedMap String CType) m => m ()
 incrementCounter = modify $ mapFst (+ 1)
 
@@ -111,13 +126,15 @@ enterBlock var type block = do
   modify (mapSnd (const context))
   pure result
 
-lcToC : MonadState (Nat, SortedMap String CType) m => MonadError String m => MonadWriter (List CDecl) m => LC -> m (C, CExp, CType)
+lcToC : MonadState CompilerState m => MonadError String m => MonadWriter (List CDecl) m => LC -> m (C, CExp, CType)
 lcToC (Var str) = do
   type <- getCType str
   pure ([], str, type)
 lcToC (App x y) = do
-  (xDecls, xExp, xType@(FunType argType retType _)) <- lcToC x
-  | _ => throwError "function application requires C function type as the callable"
+  (xDecls, xExp, xType) <- lcToC x
+  let funRequired = \a => the (m a) $ throwError "function application requires C function type as the callable"
+  FunType argType retType _ <- maybe (funRequired CType) pure $ getFunctionType xType
+  | _ => funRequired (C, CExp, CType)
   (yDecls, yExp, _) <- lcToC y
   xResultName <- genName "function"
   let xResultDecl = Var xType xResultName (Just xExp)
@@ -169,6 +186,7 @@ lcToCProgram lc = do
 writeCType : File -> CType -> IO ()
 writeCType file (RawType type) = ignore (fPutStr file type)
 writeCType file (FunType _ _ closureType) = ignore (fPutStr file closureType)
+writeCType file (ExternType type) = writeCType file type
 
 writeCArg : File -> CArg -> IO ()
 writeCArg file arg = do
