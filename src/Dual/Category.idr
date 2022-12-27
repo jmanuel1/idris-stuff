@@ -91,3 +91,6 @@ record CartesianClosed object arrow (cat : Category object arrow) where
   cartesian : Cartesian object arrow cat
   exponential : (b, a : object) -> Exponential object arrow cat b a
   -- final : Final object arrow cat
+
+CocartesianCoclosed : (object, arrow : _) -> Category object arrow -> Type
+CocartesianCoclosed o a cat = CartesianClosed o (flip a) (dual cat)
