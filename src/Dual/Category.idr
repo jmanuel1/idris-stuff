@@ -3,6 +3,7 @@ module Dual.Category
 
 %default total
 
+public export
 record Category (object : Type) (arrow : object -> object -> Type) where
   constructor MkCategory
   id : (a : object) -> a `arrow` a
@@ -13,10 +14,11 @@ record Category (object : Type) (arrow : object -> object -> Type) where
 
 record Isomorphism (object : Type) (a, b : object) (arrow : object -> object -> Type) (c : Category object arrow) (i : a `arrow` b) where
   constructor MkIsomorphism
-  j : b `arrow` a
-  idA : c.compose j i === c.id a
-  idB : c.compose i j === c.id b
+  isomorphismReverse : b `arrow` a
+  idA : c.compose isomorphismReverse i === c.id a
+  idB : c.compose i isomorphismReverse === c.id b
 
+export
 dual : Category object arrow -> Category object (flip arrow)
 dual cat = MkCategory {
   id = cat.id,
@@ -27,27 +29,35 @@ dual cat = MkCategory {
     let ca = cat.composeAssociative d c b a hOp gOp fOp in sym ca
 }
 
+public export
 0 Unique : t -> Type
 Unique a = (b : t) -> a === b
 
+public export
 record Final object arrow (c : Category object arrow) where
   constructor MkFinal
   top : object
   unit : (a : object) -> a `arrow` top
   unitUnique : (a : object) -> Unique (unit a)
 
+public export
 record Initial object arrow (c : Category object arrow) where
   constructor MkInitial
   bottom : object
   absurd : (a : object) -> bottom `arrow` a
   absurdUnique : (a : object) -> Unique (absurd a)
 
+public export
 record Product object arrow (cat : Category object arrow) (a, b : object) where
   constructor MkProduct
   product : object
   pi : product `arrow` a
   pi' : product `arrow` b
-  universalProperty : (c : object) -> (f : c `arrow` a) -> (g : c `arrow` b) -> (h : c `arrow` product ** (Unique h, f === (cat.compose pi h), g === (cat.compose pi' h)))
+  -- name is from https://en.wikipedia.org/wiki/Product_(category_theory)#Product_of_two_objects
+  arrowProduct : (gamma : object) -> gamma `arrow` a -> gamma `arrow` b -> gamma `arrow` product
+  diagramCommutes : (c : object) -> (f : c `arrow` a) -> (g : c `arrow` b) -> let h := arrowProduct c f g in (f === (cat.compose pi h), g === (cat.compose pi' h))
+  -- https://en.wikipedia.org/wiki/Product_(category_theory)#Equational_definition
+  arrowProductUnique : (c : object) -> (g : c `arrow` product) -> arrowProduct c (cat.compose pi g) (cat.compose pi' g) === g
 
 -- %hide Prelude.(*)
 --
@@ -62,35 +72,39 @@ record Product object arrow (cat : Category object arrow) (a, b : object) where
 -- MkPair : {0 a, b : object} -> {gamma : object} -> (cat : Category object arrow) => Product object arrow cat a b => gamma `arrow` a -> gamma `arrow` b -> gamma `arrow` (a * b)
 -- MkPair @{_} @{product} {gamma} f g = fst $ product.universalProperty gamma f g
 
-arrowsIntoProduct : (gamma : object) -> (p : Product object arrow cat a b) -> gamma `arrow` a -> gamma `arrow` b -> gamma `arrow` p.product
-arrowsIntoProduct gamma p f g = fst $ p.universalProperty gamma f g
-
 -- infixr 9 ><
 --
 -- (><) : {auto cat : Category object arrow} -> Product object arrow cat a c => Product object arrow cat b d => {a, b, c, d : object} -> a `arrow` b -> c `arrow` d -> (a * c) `arrow` (b * d)
 -- (><) @{cat} @{acProduct} f g = (cat.compose f (acProduct.pi), cat.compose g (acProduct.pi'))
 
-bimapProduct : (cat : Category object arrow) -> {a, b, c, d : object} -> (ac : Product object arrow cat a c) -> (bd : Product object arrow cat b d) -> a `arrow` b -> c `arrow` d -> ac.product `arrow` bd.product
-bimapProduct cat ac bd f g = arrowsIntoProduct ac.product bd (cat.compose f ac.pi) (cat.compose g ac.pi')
+-- Name from https://en.wikipedia.org/wiki/Product_(category_theory)#Discussion.
+public export
+cartesianArrowProduct : (cat : Category object arrow) -> {a, b, c, d : object} -> (ac : Product object arrow cat a c) -> (bd : Product object arrow cat b d) -> a `arrow` b -> c `arrow` d -> ac.product `arrow` bd.product
+cartesianArrowProduct cat ac bd f g = bd.arrowProduct ac.product (cat.compose f ac.pi) (cat.compose g ac.pi')
 
+public export
 record Exponential object arrow (cat : Category object arrow) (b, a : object) where -- b ** a
   constructor MkExponential
   exp : object
-  -- %hint
   productARight : (o : object) -> Product object arrow cat o a
   eval : (productARight exp).product `arrow` b
   curry : (gamma : object) -> (f : (productARight gamma).product `arrow` b) -> gamma `arrow` exp
-  diagramCommutes : (gamma : object) -> (f : (productARight gamma).product `arrow` b) -> (cat.compose eval (bimapProduct cat (productARight gamma) (productARight exp) (curry gamma f) (cat.id a))) === f
-  curryUnique : (gamma : object) -> (f : (productARight gamma).product `arrow` b) -> let h := curry gamma f in curry gamma (cat.compose eval (bimapProduct cat (productARight gamma) (productARight exp) h (cat.id a))) === h
+  diagramCommutes : (gamma : object) -> (f : (productARight gamma).product `arrow` b) -> (cat.compose eval (cartesianArrowProduct cat (productARight gamma) (productARight exp) (curry gamma f) (cat.id a))) === f
+  -- https://en.wikipedia.org/wiki/Exponential_object#Equational_definition
+  curryUnique : (gamma : object) -> (h : gamma `arrow` exp) -> curry gamma (cat.compose eval (cartesianArrowProduct cat (productARight gamma) (productARight exp) h (cat.id a))) === h
 
+public export
 record Cartesian object arrow (cat : Category object arrow) where
+  constructor MkCartesian
   finiteProduct : (a, b : object) -> Product object arrow cat a b
 
+public export
 record CartesianClosed object arrow (cat : Category object arrow) where
   constructor MkCartesianClosed
   cartesian : Cartesian object arrow cat
   exponential : (b, a : object) -> Exponential object arrow cat b a
   -- final : Final object arrow cat
 
+public export
 CocartesianCoclosed : (object, arrow : _) -> Category object arrow -> Type
 CocartesianCoclosed o a cat = CartesianClosed o (flip a) (dual cat)
