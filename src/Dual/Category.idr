@@ -18,7 +18,7 @@ record Isomorphism (object : Type) (a, b : object) (arrow : object -> object -> 
   idA : c.compose isomorphismReverse i === c.id a
   idB : c.compose i isomorphismReverse === c.id b
 
-export
+public export
 dual : Category object arrow -> Category object (flip arrow)
 dual cat = MkCategory {
   id = cat.id,
@@ -58,6 +58,10 @@ record Product object arrow (cat : Category object arrow) (a, b : object) where
   diagramCommutes : (c : object) -> (f : c `arrow` a) -> (g : c `arrow` b) -> let h := arrowProduct c f g in (f === (cat.compose pi h), g === (cat.compose pi' h))
   -- https://en.wikipedia.org/wiki/Product_(category_theory)#Equational_definition
   arrowProductUnique : (c : object) -> (g : c `arrow` product) -> arrowProduct c (cat.compose pi g) (cat.compose pi' g) === g
+
+public export
+Coproduct : (object, arrow : _) -> Category object arrow -> object -> object -> Type
+Coproduct o a cat = Product o (flip a) (dual cat)
 
 -- %hide Prelude.(*)
 --
