@@ -112,3 +112,35 @@ record CartesianClosed object arrow (cat : Category object arrow) where
 public export
 CocartesianCoclosed : (object, arrow : _) -> Category object arrow -> Type
 CocartesianCoclosed o a cat = CartesianClosed o (flip a) (dual cat)
+
+-- According to
+-- https://en.wikipedia.org/wiki/Kleisli_category#Extension_operators_and_Kleisli_triples,
+-- "to give a monad is to give a Kleisli triple."
+public export
+record KleisliTriple {object : _} {arrow : _} (cat : Category object arrow) (t : object -> object) where
+  constructor MkTriple
+  pure : (a : object) -> a `arrow` t a
+  extend : (a, b : object) -> (f : a `arrow` t b) -> t a `arrow` t b
+  extendPureIsId : (x : object) -> extend x x (pure x) === cat.id (t x)
+  pureComposeRight : (x, y : object) -> (f : x `arrow` t y) -> cat.compose (extend x y f) (pure x) === f
+  extendCompose : (x, y, z : object) -> (f : x `arrow` t y) -> (g : y `arrow` t z) -> extend x z (cat.compose (extend y z g) f) === cat.compose (extend y z g) (extend x y f)
+
+public export
+0 KleisliCategory : (cat : Category object arrow) -> KleisliTriple cat t -> Type
+KleisliCategory cat triple = Category object (\a, b => a `arrow` t b)
+
+public export
+mkKleisliCategory : {t : _} -> (cat : Category object arrow) -> (triple : KleisliTriple cat t) -> KleisliCategory cat triple
+mkKleisliCategory cat triple = MkCategory {
+  id = triple.pure,
+  compose = \f, g => cat.compose (triple.extend _ _ f) g,
+  idComposeRight = \a, b, f => triple.pureComposeRight a b f,
+  idComposeLeft = \a, b, f => rewrite triple.extendPureIsId b in cat.idComposeLeft a (t b) f,
+  composeAssociative = \_, b, c, d, f, g, h =>
+    -- Goal: cat .compose (triple .extend b d (cat .compose (triple .extend c d h) g)) f
+    --     = cat .compose (triple .extend c d h) (cat .compose (triple .extend b c g) f)
+    rewrite triple.extendCompose _ _ _ g h in
+      -- Goal: cat .compose (cat .compose (triple .extend c d h) (triple .extend b c g)) f
+      --     = cat .compose (triple .extend c d h) (cat .compose (triple .extend b c g) f)
+      cat.composeAssociative _ _ _ _ f (triple.extend b c g) (triple.extend c d h)
+}
