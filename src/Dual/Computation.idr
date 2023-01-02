@@ -3,6 +3,7 @@
 module Dual.Computation
 
 import Control.Function
+import Control.Function.FunExt
 import Data.Morphisms
 import Deriving.Functor
 import Dual.Category
@@ -70,11 +71,7 @@ IdrisCat = MkCategory {
 etaPair : (p : (a, b)) -> (fst p, snd p) === p
 etaPair (a, b) = Refl
 
--- internal POSTULATE: function extensionality.
-funExt : {0 f, g : t -> t'} -> ((x : t) -> f x === g x) -> f === g
-funExt _ = believe_me (Refl {a = t -> t', x = f})
-
-idrisProduct : (a, b : Type) -> Product Type (~>) IdrisCat a b
+idrisProduct : FunExt => (a, b : Type) -> Product Type (~>) IdrisCat a b
 idrisProduct a b = MkProduct {
   product = (a, b),
   pi = Mor fst,
@@ -85,7 +82,7 @@ idrisProduct a b = MkProduct {
     cong Mor (funExt $ \x => etaPair (g x))
 }
 
-idrisExponential : (b, a : Type) -> Exponential Type (~>) IdrisCat b a
+idrisExponential : FunExt => (b, a : Type) -> Exponential Type (~>) IdrisCat b a
 idrisExponential b a = MkExponential {
   exp = a -> b,
   productARight = \o => idrisProduct o a,
@@ -95,15 +92,15 @@ idrisExponential b a = MkExponential {
   curryUnique = \_, (Mor _) => Refl
 }
 
-idrisCartesian : Cartesian Type (~>) IdrisCat
+idrisCartesian : FunExt => Cartesian Type (~>) IdrisCat
 idrisCartesian = MkCartesian {finiteProduct = idrisProduct}
 
-idrisCartesianClosed : CartesianClosed Type (~>) IdrisCat
+idrisCartesianClosed : FunExt => CartesianClosed Type (~>) IdrisCat
 idrisCartesianClosed = MkCartesianClosed {cartesian = idrisCartesian, exponential = idrisExponential}
 
 {- Show that Idris has coproducts. -}
 
-idrisCoproduct : (a, b : Type) -> Coproduct Type (~>) IdrisCat a b
+idrisCoproduct : FunExt => (a, b : Type) -> Coproduct Type (~>) IdrisCat a b
 idrisCoproduct a b = MkProduct {
   product = Either a b,
   pi = Mor Left,
@@ -131,7 +128,7 @@ Injective Computation.unwrapCont where
 letEq : {0 r, a : Type} -> (c : Cont r a) -> (k : a -> r) -> Equal {a=r, b=r} (let MkCont x = c in x k) (let MkCont fa = c in fa k)
 letEq (MkCont c') k = Refl
 
-ContKleisliTriple : KleisliTriple IdrisCat (Cont r)
+ContKleisliTriple : FunExt => KleisliTriple IdrisCat (Cont r)
 ContKleisliTriple = MkTriple {
   pure = \_ => Mor pure,
   extend = \_, _, (Mor f) => Mor (>>= f),
@@ -148,10 +145,10 @@ ContKleisliTriple = MkTriple {
                   (MkCont _ ** prf) => rewrite prf in Refl))))
 }
 
-KleisliContCat : {r : _} -> KleisliCategory IdrisCat (ContKleisliTriple {r})
+KleisliContCat : FunExt => {r : _} -> KleisliCategory IdrisCat (ContKleisliTriple {r})
 KleisliContCat = mkKleisliCategory IdrisCat ContKleisliTriple
 
-kleisliContCoproduct : (r, a, b : Type) -> Coproduct Type _ (KleisliContCat {r}) a b
+kleisliContCoproduct : FunExt => (r, a, b : Type) -> Coproduct Type _ (KleisliContCat {r}) a b
 kleisliContCoproduct r a b = MkProduct {
   product = Either a b,
   pi = Mor (pure . Left),
