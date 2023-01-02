@@ -98,9 +98,17 @@ record Exponential object arrow (cat : Category object arrow) (b, a : object) wh
   curryUnique : (gamma : object) -> (h : gamma `arrow` exp) -> curry gamma (cat.compose eval (cartesianArrowProduct cat (productARight gamma) (productARight exp) h (cat.id a))) === h
 
 public export
+Coexponential : (object, arrow : _) -> Category object arrow -> object -> object -> Type
+Coexponential o arrow cat b a = Exponential o (flip arrow) (dual cat) b a
+
+public export
 record Cartesian object arrow (cat : Category object arrow) where
   constructor MkCartesian
   finiteProduct : (a, b : object) -> Product object arrow cat a b
+
+public export
+Cocartesian : (object, arrow : _) -> Category object arrow -> Type
+Cocartesian o a cat = Cartesian o (flip a) (dual cat)
 
 public export
 record CartesianClosed object arrow (cat : Category object arrow) where
