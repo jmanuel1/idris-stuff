@@ -12,29 +12,30 @@ import Syntax.WithProof
 %default total
 %language ElabReflection
 
-record Cont r a where
-  constructor MkCont
-  runCont : ((a -> r) -> r)
+namespace Cont
+  public export
+  Cont : Type -> Type -> Type
+  Cont r a = ((a -> r) -> r)
 
-%hint
-contFunctor : Functor (Cont r)
-contFunctor = %runElab derive
+  public export
+  runCont : Cont r a -> (a -> r) -> r
+  runCont = id
 
-Applicative (Cont r) where
-  pure a = MkCont $ \k => k a
-  (<*>) (MkCont f) (MkCont a) = MkCont $ \k => f $ \f' => a $ \a' => k (f' a')
+  public export
+  map : (a -> b) -> Cont r a -> Cont r b
+  map f cont = \k => cont (k . f)
 
-Monad (Cont r) where
-  (MkCont fa) >>= f = MkCont $ \k => fa $ \fa' => case f fa' of MkCont ffa => ffa k
-  join (MkCont ffa) = MkCont (\k => ffa $ \(MkCont fa) => fa k)
+  public export
+  pure : a -> Cont r a
+  pure a = \k => k a
 
--- MkCont (\k => let MkCont fa = f x in fa k) = f x
--- MkCont (let fa = runCont $ f x in fa) = f x
-etaCont : (cont : Cont r a) -> MkCont (\k => let MkCont c = cont in c k) === cont
-etaCont (MkCont _) = Refl
+  public export
+  (>>=) : Cont r a -> (a -> Cont r b) -> Cont r b
+  fa >>= f = \k => fa $ \fa' => (f fa') k
 
-KleisliCont : Type -> Type -> Type -> Type
-KleisliCont r = Kleislimorphism (Cont r)
+  public export
+  KleisliCont : Type -> Type -> Type -> Type
+  KleisliCont r = Kleislimorphism (Cont r)
 
 -- Object :
 
@@ -44,15 +45,15 @@ KleisliCont r = Kleislimorphism (Cont r)
 data Coexp r a b = MkCoexp a (b -> r)
 
 coeval : KleisliCont r a (Either (Coexp r a b) b)
-coeval = Kleisli $ \x => MkCont $ \k => k (Left (MkCoexp x $ \y => k (Right y)))
+coeval = Kleisli $ \x => \k => k (Left (MkCoexp x $ \y => k (Right y)))
 
 -- elimination rule (kinda?)
-cocurry : KleisliCont r b (Either a c) -> KleisliCont r (Coexp r b a) c
-cocurry (Kleisli f) = Kleisli $ \(MkCoexp y err) => MkCont $ \k => runCont (f y) (either err k)
+cocurry : KleisliCont r b (Either c a) -> KleisliCont r (Coexp r b a) c
+cocurry (Kleisli f) = Kleisli $ \(MkCoexp y err) => \k => runCont (f y) (either k err)
 
 example : Nat
 example =
-  let ex = cocurry coeval in runCont (ex.applyKleisli (MkCoexp (6 * 9) $ \(MkCoexp a bCont) => bCont (a + 42))) id
+  let ex = cocurry coeval in ex.applyKleisli (MkCoexp (the Nat 6 * 9) $ \y => y) $ \(MkCoexp x k) => k x
 
 {- The Kleisli category of the continuation monad is cocartesian coclosed if the
 underlying category is cartesian closed and has coproducts. So, let's show that
@@ -116,49 +117,29 @@ idrisCoproduct a b = MkProduct {
 {- Now, to show that the Kleisli category of the continuation monad is
 cocartesian coclosed. -}
 
-simpleFunEta : (0 expr : Cont r a) -> (k : a -> r) -> Equal {a = r, b = r} (let MkCont x = expr in x k) ((the ((a -> r) -> r) (let MkCont x = expr in x)) k)
-simpleFunEta (MkCont c) k = Refl
-
-unwrapCont : Cont r a -> (a -> r) -> r
-unwrapCont (MkCont c) = c
-
-Injective Computation.unwrapCont where
-  injective {x = MkCont c} {y = MkCont c} Refl = Refl
-
-letEq : {0 r, a : Type} -> (c : Cont r a) -> (k : a -> r) -> Equal {a=r, b=r} (let MkCont x = c in x k) (let MkCont fa = c in fa k)
-letEq (MkCont c') k = Refl
-
 ContKleisliTriple : FunExt => KleisliTriple IdrisCat (Cont r)
 ContKleisliTriple = MkTriple {
   pure = \_ => Mor pure,
   extend = \_, _, (Mor f) => Mor (>>= f),
-  extendPureIsId = \_ => cong Mor (funExt $ \(MkCont arg) => cong MkCont (funExt $ \_ => Refl)),
-  pureComposeRight = \_, _, (Mor f) => cong Mor (funExt $ \x => rewrite sym (etaCont (f x)) in Refl),
-  extendCompose = \_, _, _, (Mor f), (Mor g) =>
-    cong Mor (funExt $ \(MkCont arg) =>
-      cong MkCont (funExt $ \k =>
-        cong arg (funExt $ \fa' =>
-          rewrite sym (etaCont (f fa')) in
-            case @@(f fa') of
-              (MkCont c ** prf) => rewrite prf in cong c (funExt $ \fa' =>
-                case @@(g fa') of
-                  (MkCont _ ** prf) => rewrite prf in Refl))))
+  extendPureIsId = \_ => Refl,
+  pureComposeRight = \_, _, (Mor _) => Refl,
+  extendCompose = \_, _, _, (Mor _), (Mor _) => Refl
 }
 
 KleisliContCat : FunExt => {r : _} -> KleisliCategory IdrisCat (ContKleisliTriple {r})
 KleisliContCat = mkKleisliCategory IdrisCat ContKleisliTriple
 
-kleisliContCoproduct : FunExt => (r, a, b : Type) -> Coproduct Type _ (KleisliContCat {r}) a b
-kleisliContCoproduct r a b = MkProduct {
+kleisliContCoproduct : FunExt => {0 r : Type} -> (a, b : Type) -> Coproduct Type _ (KleisliContCat {r}) a b
+kleisliContCoproduct a b = MkProduct {
   product = Either a b,
   pi = Mor (pure . Left),
   pi' = Mor (pure . Right),
   arrowProduct = \_, (Mor f), (Mor g) => Mor $ \x => case x of
     Left x => f x
     Right x => g x,
-  diagramCommutes = \c, (Mor f), (Mor g) => let dc = (idrisCoproduct a b).diagramCommutes (Cont r c) (Mor f) (Mor g) in (cong Mor (funExt $ \x => rewrite sym (etaCont (f x)) in cong MkCont (funExt $ \k => case @@(f x) of (MkCont fx ** prf) => {-rewrite prf in-} ?hole)), cong Mor ?hole'), --(cong Mor (funExt $ \x => case @@(f x) of (MkCont fx ** prf) => rewrite prf in cong MkCont (funExt $ \k => ?h1)), ?h2),
-  arrowProductUnique = ?h3 {-\_, (Mor g) =>
+  diagramCommutes = \_, (Mor _), (Mor _) => (Refl, Refl),
+  arrowProductUnique = \_, (Mor _) =>
     cong Mor (funExt $ \x => case x of
-      Left x => Refl
-      Right x => Refl)-}
+      Left _ => Refl
+      Right _ => Refl)
 }
