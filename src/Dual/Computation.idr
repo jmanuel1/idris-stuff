@@ -143,3 +143,24 @@ kleisliContCoproduct a b = MkProduct {
       Left _ => Refl
       Right _ => Refl)
 }
+
+cocurry' : (b -> Cont r (Either a c)) -> ((Coexp r b c) -> Cont r a)
+cocurry' f = applyKleisli $ cocurry (Kleisli f)
+
+kleisliContCoexponential : FunExt => (r, b, a : Type) -> Coexponential Type _ (KleisliContCat {r}) b a
+kleisliContCoexponential r b a = MkExponential {
+  exp = Coexp r b a,
+  productARight = \o => kleisliContCoproduct o a,
+  eval = Mor coeval.applyKleisli,
+  curry = \_, (Mor f) => Mor (cocurry' f),
+  diagramCommutes = \_, (Mor f) => cong Mor (funExt $ \x => funExt $ \_ => cong (f x) (funExt $ \eith => case eith of
+    Left _ => Refl
+    Right _ => Refl)),
+  curryUnique = \_, (Mor _) => cong Mor (funExt $ \(MkCoexp _ _) => Refl)
+}
+
+kleisliContCocartesian : FunExt => Cocartesian Type _ KleisliContCat
+kleisliContCocartesian = MkCartesian {finiteProduct = kleisliContCoproduct}
+
+kleisliContCocartesianCoclosed : FunExt => (r : Type) -> CocartesianCoclosed Type _ (KleisliContCat {r})
+kleisliContCocartesianCoclosed r = MkCartesianClosed {cartesian = kleisliContCocartesian, exponential = kleisliContCoexponential r}
