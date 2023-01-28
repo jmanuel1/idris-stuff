@@ -42,14 +42,17 @@ namespace Cont
 -- introduction rule
 -- A |- (A - B) \/ B
 
+public export
 data Coexp r a b = MkCoexp a (b -> r)
 
+export
 coeval : KleisliCont r a (Either (Coexp r a b) b)
 coeval = Kleisli $ \x => \k => k (Left (MkCoexp x $ \y => k (Right y)))
 
 -- elimination rule (kinda?)
+export
 cocurry : KleisliCont r b (Either c a) -> KleisliCont r (Coexp r b a) c
-cocurry (Kleisli f) = Kleisli $ \(MkCoexp y err) => \k => runCont (f y) (either k err)
+cocurry (Kleisli f) = Kleisli $ \(MkCoexp y err) => \k => (f y) (either k err)
 
 example : Nat
 example =
