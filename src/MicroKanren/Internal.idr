@@ -41,7 +41,6 @@ export
 Goal : Type -> Type
 Goal a = State a -> Stream (State a)
 
--- export
 emptyState : State a
 emptyState = MkState empty 0
 
@@ -53,10 +52,18 @@ walk u s = case u of
     Nothing => Var u
   _ => u
 
-extendSubstitution : Variable -> Term a -> Substitution a -> Substitution a
-extendSubstitution x v s = insert x v s
+covering
+occurs : Variable -> Term a -> Substitution a -> Bool
+occurs x v s = let v = walk v s in
+  case v of
+    Var v => v == x
+    Pair carV cdrV => occurs x carV s || occurs x cdrV s
+    _ => False
 
--- TODO: Disallow circular substitutions
+covering
+extendSubstitution : Variable -> Term a -> Substitution a -> Maybe (Substitution a)
+extendSubstitution x v s = if occurs x v s then Nothing else Just $ insert x v s
+
 covering
 unify : Eq a => Term a -> Term a -> Substitution a -> Maybe (Substitution a)
 unify u v s =
@@ -64,9 +71,9 @@ unify u v s =
     u = walk u s
     v = walk v s
   in case (u, v) of
-    (Var u, Var v) => Just $ if u == v then s else extendSubstitution u (Var v) s
-    (Var u, v) => Just $ extendSubstitution u v s
-    (u, Var v) => Just $ extendSubstitution v u s
+    (Var u, Var v) => if u == v then Just s else extendSubstitution u (Var v) s
+    (Var u, v) => extendSubstitution u v s
+    (u, Var v) => extendSubstitution v u s
     (Pair carU cdrU, Pair carV cdrV) => do
       s <- unify carU carV s
       unify cdrU cdrV s

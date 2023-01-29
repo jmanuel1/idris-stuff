@@ -58,3 +58,7 @@ appendo xs ys zs = conde [
 covering
 appendBackwards : List (Term ListElement)
 appendBackwards = run (limit 10) $ \[q, p, r] => [appendo p r [4, 5, 6], q === (Pair p r)]
+
+covering
+circular : Eq a => List (Term a)
+circular = run (limit 1) {m = 1} $ \[q] => [q === Pair q q]
