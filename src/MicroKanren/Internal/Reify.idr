@@ -8,28 +8,23 @@ import Data.Vect
 import MicroKanren.Internal
 import MicroKanren.Internal.Control
 import MicroKanren.Internal.Types
+import Syntax.WithProof
 
 %hide Prelude.Stream.Stream
 
 %default total
 
-covering
-walkRecursively : Term a -> Substitution a -> Term a
-walkRecursively v s = let v = walk v s in
-  case v of
-    Var _ => v
-    Pair carV cdrV => Pair (walkRecursively carV s) (walkRecursively cdrV s)
-    _ => v
+-- XXX: walkRecursively: walk is already recursive
 
 -- Note: Without reify-name, reify-s doesn't change the substitution
 
-covering
-reifyStateFirstVar : State a -> Term a
-reifyStateFirstVar state = walkRecursively (Var 0) state.substitution
+reifyStateFirstVar : (state : State a) -> {auto 0 prf : state.n = S _} -> Term (state.m) a
+reifyStateFirstVar state = walk (sub state.substitution) (Var (rewrite prf in FZ))
 
-covering
-mkReify : List (State a) -> List (Term a)
-mkReify states = map reifyStateFirstVar states
+mkReify : List (State a) -> List (n : Nat ** Term n a)
+mkReify states = map (\state => case @@(state.n) of
+  (Z ** _) => (1 ** Var 0)
+  (S _ ** _) => (_ ** reifyStateFirstVar state)) states
 
 covering
 pull : Stream a -> Colist a
@@ -53,5 +48,5 @@ callEmptyState : Goal a -> Stream (State a)
 callEmptyState g = g emptyState
 
 export covering
-run : Fuel -> {m : Nat} -> (Vect m (Term a) -> LazyList (Goal a)) -> List (Term a)
+run : Fuel -> {m : Nat} -> ({o : Nat} -> Vect m (Term o a) -> LazyList (Goal a)) -> List (n : Nat ** Term n a)
 run n gs = mkReify (take n (callEmptyState (fresh gs)))

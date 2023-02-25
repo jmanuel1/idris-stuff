@@ -44,10 +44,13 @@ Goal : Type -> Type
 Goal a = State a -> Stream (State a)
 
 emptyState : State a
-emptyState = MkState (the (IndSub 0 0 a) []) (the (Fin 1) FZ)
+emptyState = MkState (empty {k = Variable 0, v = Term 0 a}) (FZ {k = 1})
 
-%hide MicroKanren.Internal.Types.State.m
 %hide MicroKanren.Internal.Types.State.n
+%hide MicroKanren.Internal.Types.State.m
+
+data VarAbsentInSub : Term n a -> Substitution n _ a -> Type where
+  Absence : lookup u s === Nothing -> VarAbsentInSub (Var u) s
 
 -- public export
 -- applySub : Substitution m n a -> Term m a -> Term n a
@@ -97,80 +100,86 @@ thinTerm u (Var x) = Var (thin u x)
 thinTerm u (Val x) = Val x
 thinTerm u (Pair x y) = Pair (thinTerm u x) (thinTerm u y)
 
-walk : {n : Nat} -> (s : Substitution m n a) -> (u : Term m a) -> Term n a
-walk s (Var x) = s x
-walk s (Val x) = Val x
-walk s (Pair x y) = Pair (walk s x) (walk s y)
+walk : {n : Nat} -> (u : Term (S n) a) -> (s : Substitution (S n) n a) -> Maybe (Term (S n) a)
+walk {n = Z} u s = pure $ case u of
+  Var u => case lookup u s of
+    Just term => weaken term
+    Nothing => Var u
+  Val u => Val u
+  Pair u v => Pair u v
+walk {n = S m} u s = case u of
+  Var u => case lookup u s of
+    Just term => do
+      term' <- thickTerm u (weaken term)
+      pure $ thinTerm u !(walk {n = m} term' (thickSub u s))
+    Nothing => pure $ Var u
+  _ => pure u
 
 occurs : {n : Nat} -> Variable (S n) -> Term (S n) a -> Bool
 occurs x v = isNothing (thickTerm x v)
 
+weakenSub : Substitution m n a -> Substitution (S m) (S n) a
+weakenSub s =
+  let
+    pairs = SortedMap.toList s
+    weakenedPairs = map (\(k, v) => (weaken k, weaken v)) pairs
+  in fromList weakenedPairs
+
 weakenSubKey : Substitution m n a -> Substitution (S m) n a
--- weakenSubKey s =
---   let
---     pairs = SortedMap.toList s
---     weakenedPairs = map (\(k, v) => (weaken k, v)) pairs
---   in fromList weakenedPairs
+weakenSubKey s =
+  let
+    pairs = SortedMap.toList s
+    weakenedPairs = map (\(k, v) => (weaken k, v)) pairs
+  in fromList weakenedPairs
 
--- SubWithInd : (m, n : Nat) -> Type -> Type
--- SubWithInd m n a = (s : Substitution m n a ** IndSub m n s)
+data IndSub : (0 m, n : Nat) -> Substitution m n a -> Type where
+  SubNil : IndSub n n SortedMap.empty
+  SubCons : (x : Variable (S m)) -> (t : Term n a) -> IndSub m n s -> IndSub (S m) n (insert x t (weakenSubKey s))
 
--- extendSubstitution : Variable (S n) -> Term m a -> SubWithInd n m a -> SubWithInd (S n) m a
--- extendSubstitution x v (s ** i) = (insert x v (weakenSubKey s) ** SubCons x v i)
+SubWithInd : (m, n : Nat) -> Type -> Type
+SubWithInd m n a = (s : Substitution m n a ** IndSub m n s)
+
+extendSubstitution : Variable (S n) -> Term m a -> SubWithInd n m a -> SubWithInd (S n) m a
+extendSubstitution x v (s ** i) = (insert x v (weakenSubKey s) ** SubCons x v i)
 -- subUnCons : (s : SubstitutNaion (S m) m a) -> Maybe (Variable (S m), Term m a, Substitution (S m) (pred m) a)
 -- subUnCons s = do
 --   (x, t) <- rightMost s
 --   ?h4
 
--- sub : Fin (S n) -> Term n a -> Term (S n) a -> Term n a
--- sub x t y = case thickTerm x t of
---   Just y =>
-
-for : {n : Nat} -> Term n a -> Variable (S n) -> Substitution (S n) n a
-for t x y = case thick x y of
-  Just y => Var y
-  Nothing => t
-
-(<=<) : {n : Nat} -> Substitution m n a -> Substitution l m a -> Substitution l n a
-(<=<) f g = walk f . g
-
-sub : {m, n : Nat} -> IndSub m n a -> Substitution m n a
-sub [] = Var
-sub ((x, t) :: s) = sub s <=< (t `for` x)
-
 ||| The RHS of the substitutions thickens away variables from the LHS.
-unify : Eq a => {n : Nat} -> Term n a -> Term n a -> {m : Nat} -> (s : IndSub n m a) -> Maybe (m' : Nat ** IndSub n m' a)
-unify {n} (Val u) (Val v) s = if u == v then Just (_ ** s) else Nothing
-unify {n} (Val _) (Pair _ _) s = Nothing
-unify {n} (Pair _ _) (Val _) s = Nothing
-unify {n} (Pair carU cdrU) (Pair carV cdrV) s = do
-  (_ ** s) <- unify carU carV s
-  unify cdrU cdrV s
-unify {n = S m} (Var u) (Var v) [] = case thick u v of
-  Just v => Just $ (m ** [(u, (Var v))])
-  Nothing => Just (S m ** [])
-unify {n = S m} (Var u) v [] = case thickTerm u v of
-  Just v => Just $ (m ** [(u, v)])
+partial
+unify : Eq a => {n : Nat} -> Term n a -> Term n a -> {m : Nat} -> (s : Substitution n m a) -> IndSub n m s -> Maybe (m' : Nat ** s' : Substitution n m' a ** IndSub n m' s')
+-- u' <- walk u s
+-- v' <- walk v s
+unify {n} (Val u) (Val v) s i = if u == v then Just (_ ** s ** i) else Nothing
+unify {n} (Val _) (Pair _ _) s _ = Nothing
+unify {n} (Pair _ _) (Val _) s _ = Nothing
+unify {n} (Pair carU cdrU) (Pair carV cdrV) s i = do
+  (_ ** s ** i) <- unify carU carV s i
+  unify cdrU cdrV s i
+unify {n = S m} (Var u) (Var v) _ SubNil = case thick u v of
+  Just v => Just $ (m ** extendSubstitution u (Var v) (empty ** SubNil))
+  Nothing => Just (S m ** empty ** SubNil)
+unify {n = S m} (Var u) v _ SubNil = case thickTerm u v of
+  Just v => Just $ (m ** extendSubstitution u v (empty ** SubNil))
   Nothing => Nothing
-unify {n = S m} u (Var v) [] = case thickTerm v u of
-  Just u => Just $ (m ** [(v, u)])
+unify {n = S m} u (Var v) _ SubNil = case thickTerm v u of
+  Just u => Just $ (m ** extendSubstitution v u (empty ** SubNil))
   Nothing => Nothing
-unify {n = S n} u v ((x, t) :: s) = do
-  (_ ** s') <- unify {a} (walk (t `for` x) u) (walk (t `for` x) v) s
-  Just (_ ** ((x, t) :: s'))
+unify {n = S n} u v s@_ (SubCons x t i) = do
+  -- (_ ** s' ** i') <- unify {a} {n} (?sub x t u) (?sub1 x t v) {m = n} ?shole ?ihole
+  ?h3
 
+{-
 export
-callFresh : ({n : Nat} -> Term n a -> Goal a) -> Goal a
-callFresh f = \state => let c = state.nextVar in f (Var c) ({ nextVar $= FS } state)
+callFresh : (Term a -> Goal a) -> Goal a
+callFresh f = \state => let c = state.nextVar in f (Var c) ({ nextVar $= (+ 1) } state)
 
-export
-(===) : Eq a => {n : Nat} -> Term n a -> Term n a -> (state : State a) -> {auto 0 prf : state.n === n} -> Stream (State a)
-(===) @{_} u v state @{prf} =
-  let
-    sub = state.substitution
-    s = unify u v {m = state.m} (rewrite sym prf in sub)
-  in case s of
-    Just (_ ** s) => pure ({substitution := s} state)
+export covering
+(===) : Eq a => Term a -> Term a -> Goal a
+u === v = \state => let s = unify u v state.substitution in
+  case s of
+    Just s => pure (MkState {substitution = s, nextVar = state.nextVar})
     Nothing => neutral
 
 export

@@ -39,7 +39,7 @@ Monad Stream where
   (Immature fas) >>= f = Immature (fas >>= f)
   (fa :: fas) >>= f = f fa <+> (fas >>= f)
 
-export
+public export
 Goal : Type -> Type
 Goal a = State a -> Stream (State a)
 
@@ -64,6 +64,12 @@ weaken : Term m a -> Term (S m) a
 weaken (Var x) = Var (weaken x)
 weaken (Val x) = Val x
 weaken (Pair x y) = Pair (weaken x) (weaken y)
+
+strengthenTo : (n : Nat) -> {m : Nat} -> Variable m -> Maybe (Variable n)
+strengthenTo n v with (isLTE m n) | (m)
+  _ | Yes lte | _ = Just (weakenLTE v lte)
+  -- _ | _ | Z = absurd v
+  _ | _ | S _ = strengthen v >>= strengthenTo n
 
 thick : {n : Nat} -> Fin (S n) -> Fin (S n) -> Maybe (Fin n)
 thick FZ FZ = Nothing
@@ -138,39 +144,78 @@ sub : {m, n : Nat} -> IndSub m n a -> Substitution m n a
 sub [] = Var
 sub ((x, t) :: s) = sub s <=< (t `for` x)
 
+weakenMax : (m : Nat) -> {n : Nat} -> Variable n -> Variable (maximum m n)
+weakenMax m w =
+  let r = maximumRightUpperBound m n in weakenLTE w r
+
+export
+weakenTermMax : (m : Nat) -> {n : Nat} -> Term n a -> Term (maximum m n) a
+weakenTermMax m (Var x) = Var (weakenMax m x)
+weakenTermMax m (Val x) = Val x
+weakenTermMax m (Pair x y) = Pair (weakenTermMax m x) (weakenTermMax m y)
+
+-- Use `coerce` instead
+varMaxBoundCommute : Variable (maximum m n) -> Variable (maximum n m)
+varMaxBoundCommute v = rewrite maximumCommutative n m in v
+
+export
+termMaxBoundCommute : Term (maximum m n) a -> Term (maximum n m) a
+termMaxBoundCommute (Var x) = Var (varMaxBoundCommute x)
+termMaxBoundCommute (Val x) = Val x
+termMaxBoundCommute (Pair x y) = Pair (termMaxBoundCommute x) (termMaxBoundCommute y)
+
 ||| The RHS of the substitutions thickens away variables from the LHS.
-unify : Eq a => {n : Nat} -> Term n a -> Term n a -> {m : Nat} -> (s : IndSub n m a) -> Maybe (m' : Nat ** IndSub n m' a)
-unify {n} (Val u) (Val v) s = if u == v then Just (_ ** s) else Nothing
+partial
+unify : Eq a => {n : Nat} -> Term n a -> Term n a -> {o, m : Nat} -> (s : IndSub o m a) -> Maybe (o' : Nat ** m' : Nat ** IndSub o' m' a)
+unify {n} (Val u) (Val v) s = if u == v then Just (_ ** _ ** s) else Nothing
 unify {n} (Val _) (Pair _ _) s = Nothing
 unify {n} (Pair _ _) (Val _) s = Nothing
 unify {n} (Pair carU cdrU) (Pair carV cdrV) s = do
-  (_ ** s) <- unify carU carV s
+  (_ ** _ ** s) <- unify carU carV s
   unify cdrU cdrV s
 unify {n = S m} (Var u) (Var v) [] = case thick u v of
-  Just v => Just $ (m ** [(u, (Var v))])
-  Nothing => Just (S m ** [])
+  Just v => Just $ (_ ** m ** [(u, (Var v))])
+  Nothing => Just (_ ** S m ** [])
 unify {n = S m} (Var u) v [] = case thickTerm u v of
-  Just v => Just $ (m ** [(u, v)])
+  Just v => Just $ (_ ** m ** [(u, v)])
   Nothing => Nothing
 unify {n = S m} u (Var v) [] = case thickTerm v u of
-  Just u => Just $ (m ** [(v, u)])
+  Just u => Just $ (_ ** m ** [(v, u)])
   Nothing => Nothing
 unify {n = S n} u v ((x, t) :: s) = do
-  (_ ** s') <- unify {a} (walk (t `for` x) u) (walk (t `for` x) v) s
-  Just (_ ** ((x, t) :: s'))
+  case strengthenTo (S n) x of
+    Just x' => ?bighole
+    Nothing => unify u v s
+  -- (_ ** _ ** s') <- unify {a} (walk (t `for` x) u) (walk (t `for` x) v) s
+  -- Just (_ ** _ ** ((x, t) :: s'))
 
+{-
 export
 callFresh : ({n : Nat} -> Term n a -> Goal a) -> Goal a
 callFresh f = \state => let c = state.nextVar in f (Var c) ({ nextVar $= FS } state)
 
+
+--
+-- weakenDomainMax : (m' : Nat) -> {n : Nat} -> IndSub n o a -> (p : Nat ** IndSub (maximum m' n) p a)
+-- weakenDomainMax m' [] = (maximum m' n ** [])
+-- we
+-- weakenDomainMax (S m') (xt :: x) = ?hole
+  -- let
+  --   (p' ** r) = weakenDomainMax m' x
+  --   s = ?xthole :: r
+  -- in ?hole_1
+
+-- unify' : Eq a => {n : Nat} -> Term n a -> Term n a -> {o, m : Nat} -> (s : IndSub o m a) -> Maybe (m' : Nat ** IndSub n m' a)
+-- unify' u v s with isLTE
+
 export
-(===) : Eq a => {n : Nat} -> Term n a -> Term n a -> (state : State a) -> {auto 0 prf : state.n === n} -> Stream (State a)
-(===) @{_} u v state @{prf} =
+(===) : Eq a => {n : Nat} -> Term n a -> Term n a -> Goal a
+(===) u v state =
   let
     sub = state.substitution
-    s = unify u v {m = state.m} (rewrite sym prf in sub)
+    s = unify (weakenTermMax state.n u) (weakenTermMax state.n v) ?subhole --(rewrite maximumCommutative state.n n in snd (weakenDomainMax n sub))
   in case s of
-    Just (_ ** s) => pure ({substitution := s} state)
+    Just (_ ** _ ** s) => pure ({substitution := s} state)
     Nothing => neutral
 
 export
