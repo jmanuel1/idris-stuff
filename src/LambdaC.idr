@@ -100,6 +100,7 @@ namespace C
   C : Type
   C = List CDecl
 
+export
 GLOBAL_NAME_PREFIX : String
 GLOBAL_NAME_PREFIX = "lc_"
 
@@ -227,12 +228,19 @@ mutual
 writeC : File -> C -> IO ()
 writeC file c = for_ c (writeCDecl file)
 
+export
+omega : LC
+omega = Fix "f" (Var "f") "int" "int"
+
+-- infinite recursion
+export
+omegaApp : LC
+omegaApp = Fix "f" (Var "f") "int" "int" `App` Extern "5" "int"
+
 main : IO ()
 main = do
-  -- infinite recursion???
-  let omega = Fix "f" (Var "f") "int" "int" `App` Extern "5" "int"
   cOmega <-
-    eitherT die pure (evalStateT (Z, the (SortedMap String CType) empty) $ lcToCProgram omega)
+    eitherT die pure (evalStateT (Z, the (SortedMap String CType) empty) $ lcToCProgram omegaApp)
   ignore $ withFile "out.c" WriteTruncate
     (\err => printLn err)
     (\file => map pure $ writeC file cOmega)
