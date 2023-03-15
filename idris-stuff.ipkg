@@ -10,7 +10,7 @@ package idris-stuff
 -- bugtracker =
 
 -- packages to add to search path
-depends = contrib
+depends = contrib, elab-util, sop >= 0.6.0
 
 -- modules to install
 -- modules =

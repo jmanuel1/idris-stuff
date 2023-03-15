@@ -9,12 +9,18 @@ import Data.Maybe
 import Data.SortedMap
 import Data.SortedSet
 import Data.String
+import Derive.Eq
+import Derive.Ord
 import Deriving.Show
+import Generics.Derive
 import System
 import System.File.Handle
 import System.File.ReadWrite
 
 %language ElabReflection
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
 
 namespace C
   public export
@@ -23,6 +29,8 @@ namespace C
   export %hint
   cTypeShow : Show CType
   cTypeShow = %runElab derive
+
+  %runElab derive "CType" [Generic, Meta, Eq, Ord]
 
   export
   FromString CType where
@@ -235,12 +243,12 @@ omega = Fix "f" (Var "f") "int" "int"
 -- infinite recursion
 export
 omegaApp : LC
-omegaApp = Fix "f" (Var "f") "int" "int" `App` Extern "5" "int"
+omegaApp = omega `App` Extern "5" "int"
 
 main : IO ()
 main = do
   cOmega <-
-    eitherT die pure (evalStateT (Z, the (SortedMap String CType) empty) $ lcToCProgram omegaApp)
+    eitherT die pure (evalStateT (the Nat 0, the (SortedMap String CType) empty) $ lcToCProgram omegaApp)
   ignore $ withFile "out.c" WriteTruncate
     (\err => printLn err)
     (\file => map pure $ writeC file cOmega)
