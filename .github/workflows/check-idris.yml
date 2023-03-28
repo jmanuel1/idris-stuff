@@ -6,7 +6,11 @@ jobs:
     steps:
       - name: Install Chez Scheme
         run: sudo apt install chezscheme -y
+      - name: Download Pack Installer
+        run: curl -fsSL https://raw.githubusercontent.com/stefan-hoeck/idris2-pack/main/install.bash -o pack.sh
+      - name: Make Pack Installer Executable
+        run: chmod +x pack.sh
       - name: Install Pack
-        run: echo "scheme" > bash -c "$(curl -fsSL https://raw.githubusercontent.com/stefan-hoeck/idris2-pack/main/install.bash)"
+        run: ./pack.sh
       - name: Check idris-stuff Package
         run: ~/.pack/bin/idris2 --typecheck idris-stuff.ipkg
