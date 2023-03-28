@@ -1,0 +1,10 @@
+name: Check Idris Sources
+on: [push]
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup Idris
+        uses: sergeyshpadyrev/setup-idris@v1.2
+      - name: Check idris-stuff Package
+        run: idris2 --typecheck idris-stuff.ipkg
