@@ -30,8 +30,6 @@ formatDep' (StrP :: pats) acc = \str => formatDep' pats (acc ++ str)
 formatDep : (pats : List DepPat) -> recCurryType pats
 formatDep pats = formatDep' pats ""
 
--- TODO: There is a Cont monad impl in src\Dual\Computation.idr
-
 {-
 Type-safe printf without dependent types:
 
@@ -41,6 +39,7 @@ https://www.brics.dk/RS/98/12/BRICS-RS-98-12.pdf
 -}
 
 -- Patterns
+-- TODO: Use a indexed/delimited continuation monad
 
 lit : String -> (String -> a) -> String -> a
 lit str k acc = k (acc ++ str)
@@ -59,9 +58,6 @@ str k acc s = k (acc ++ s)
 formatNonDep : ((String -> String) -> String -> a) -> a
 formatNonDep p = p id ""
 
-{-
-Format> formatNonDep (int . lit " is " . str . eol) 5 "five"
-"5 is five\n"
-Format> formatDep [IntP, LitP " is ", StrP, EolP] 5 "five"
-"5 is five\n"
--}
+%unbound_implicits off
+nonDepExample : formatNonDep (int . lit " is " . str . eol) 5 "five" = "5 is five\n"
+depExample : formatDep [IntP, LitP " is ", StrP, EolP] 5 "five" = "5 is five\n"
