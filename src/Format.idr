@@ -10,32 +10,25 @@ data DepPat : Type where
   IntP : DepPat
   StrP : DepPat
 
-formatType : List DepPat -> Type
-formatType [] = ()
-formatType (LitP str :: pats) = formatType pats
-formatType (EolP :: pats) = formatType pats
-formatType (IntP :: pats) = (Integer, formatType pats)
-formatType (StrP :: pats) = (String, formatType pats)
+-- Inspired by Brian McKenna's type-safe printf:
+-- https://gist.github.com/puffnfresh/11202637 and
+-- https://www.youtube.com/watch?v=fVBck2Zngjo
+recCurryType : List DepPat -> Type
+recCurryType [] = String
+recCurryType (LitP str :: pats) = recCurryType pats
+recCurryType (EolP :: pats) = recCurryType pats
+recCurryType (IntP :: pats) = Integer -> recCurryType pats
+recCurryType (StrP :: pats) = String -> recCurryType pats
 
-formatDep' : (pats : List DepPat) -> formatType pats -> String
-formatDep' [] _ = ""
-formatDep' (LitP str :: pats) args = str ++ formatDep' pats args
-formatDep' (EolP :: pats) args = "\n" ++ formatDep' pats args
-formatDep' (IntP :: pats) (i, args) = cast i ++ formatDep' pats args
-formatDep' (StrP :: pats) (str, args) = str ++ formatDep' pats args
+formatDep' : (pats : List DepPat) -> String -> recCurryType pats
+formatDep' [] acc = acc
+formatDep' (LitP str :: pats) acc = formatDep' pats (acc ++ str)
+formatDep' (EolP :: pats) acc = formatDep' pats (acc ++ "\n")
+formatDep' (IntP :: pats) acc = \n => formatDep' pats (acc ++ cast n)
+formatDep' (StrP :: pats) acc = \str => formatDep' pats (acc ++ str)
 
--- TODO: Use HVect so that this isn't a repeat of formatType
--- TODO: this
--- recCurryType : List DepPat -> Type -> Type
--- recCurryType [] t = t
--- recCurryType (LitP str :: pats) t = recCurryType pats t
--- recCurryType (EolP :: pats) t = recCurryType pats t
--- recCurryType (IntP :: pats) t = (Integer -> recCurryType pats t)
--- recCurryType (StrP :: pats) t = (String -> recCurryType pats t)
---
--- formatDep : (pats : List DepPat) -> recCurryType pats String
--- formatDep' [] = formatDep' [] ()
--- formatDep' (LitP str :: pats) =
+formatDep : (pats : List DepPat) -> recCurryType pats
+formatDep pats = formatDep' pats ""
 
 -- TODO: There is a Cont monad impl in src\Dual\Computation.idr
 
@@ -67,8 +60,8 @@ formatNonDep : ((String -> String) -> String -> a) -> a
 formatNonDep p = p id ""
 
 {-
-Format> formatDep' [IntP, LitP " is ", StrP, EolP] (5, "five", ())
-"5 is five\n"
 Format> formatNonDep (int . lit " is " . str . eol) 5 "five"
+"5 is five\n"
+Format> formatDep [IntP, LitP " is ", StrP, EolP] 5 "five"
 "5 is five\n"
 -}
