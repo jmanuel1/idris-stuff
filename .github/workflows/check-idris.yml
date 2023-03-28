@@ -4,7 +4,9 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Idris
-        uses: sergeyshpadyrev/setup-idris@v1.1
+      - name: Install Chez Scheme
+        run: sudo apt install chezscheme -y
+      - name: Install Pack
+        run: echo "scheme" > bash -c "$(curl -fsSL https://raw.githubusercontent.com/stefan-hoeck/idris2-pack/main/install.bash)"
       - name: Check idris-stuff Package
         run: idris2 --typecheck idris-stuff.ipkg
