@@ -12,8 +12,22 @@ package idris-stuff
 -- packages to add to search path
 depends = contrib
 
--- modules to install
--- modules =
+modules =
+  Data.SortedMap.Dependent.Inductive,
+  Dual.Category,
+  Dual.Computation,
+  Dual.Lang,
+  LambdaC,
+  LambdaC.Effect,
+  LambdaC.Test,
+  MicroKanren,
+  MicroKanren.Internal.Types.Term,
+  MicroKanren.Internal.Types.Variable,
+  MicroKanren.Internal.Control,
+  MicroKanren.Internal.Reify,
+  MicroKanren.Internal.Types,
+  MicroKanren.Internal,
+  MicroKanren.Examples
 
 -- main file (i.e. file to load at REPL)
 -- main =
