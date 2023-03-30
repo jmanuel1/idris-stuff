@@ -11,6 +11,6 @@ jobs:
       - name: Make Pack Installer Executable
         run: chmod +x pack.sh
       - name: Install Pack
-        run: echo "" > ./pack.sh
+        run: echo "" | ./pack.sh
       - name: Check idris-stuff Package
         run: ~/.pack/bin/idris2 --typecheck idris-stuff.ipkg
