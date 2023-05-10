@@ -6,7 +6,7 @@ import public MicroKanren.Internal.Types.Variable
 
 public export
 Substitution : Type -> Type
-Substitution a = SortedMap Variable (Term a)
+Substitution a = List (Variable, Term a)
 
 public export
 record State a where
