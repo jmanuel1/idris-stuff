@@ -175,8 +175,46 @@ data DegreeLT : (Nat, Nat) -> (Nat, Nat) -> Type where
   FstLT : LT a b -> DegreeLT (a, _) (b, _)
   SndLT : c === d -> LT a b -> DegreeLT (c, a) (d, b)
 
+remove : VarContext -> Variable -> VarContext
+remove [] _ = []
+remove (x :: xs) v with (decEq x v)
+  _ | (No _) = x :: (xs `remove` v)
+  _ | (Yes _) = xs `remove` v
+
+removeVarOutsideContextMaintainsLength : (context : VarContext) -> (a : Variable) -> Not (a `Elem` context) -> length (context `remove` a) === length context
+removeVarOutsideContextMaintainsLength [] _ _ = Refl
+removeVarOutsideContextMaintainsLength (x :: xs) a outsideContext with (decEq x a)
+  _ | (No _) =
+    let subprf = removeVarOutsideContextMaintainsLength xs a (outsideContext . There) in
+    cong S subprf
+  removeVarOutsideContextMaintainsLength (x :: xs) x outsideContext | (Yes Refl) = void $ outsideContext Here
+
+removeVarInContextDecreasesLength : (context : VarContext) -> (a : Variable) -> a `Elem` context -> LT (length (context `remove` a)) (length context)
+removeVarInContextDecreasesLength [] _ _ impossible
+removeVarInContextDecreasesLength (x :: xs) a inContext with (decEq x a)
+  _ | (No contra) =
+    case inContext of
+      There inXs =>
+        let subprf = removeVarInContextDecreasesLength xs a inXs in
+        LTESucc subprf
+      Here =>
+        void $ contra Refl
+  _ | (Yes _) =
+    case inContext of
+      There inXs =>
+        let subprf = removeVarInContextDecreasesLength xs a inXs in
+        lteSuccRight subprf
+      Here => case isElem x xs of
+        Yes inXs =>
+          let subprf = removeVarInContextDecreasesLength xs x inXs in
+          lteSuccRight subprf
+        No contra =>
+          rewrite removeVarOutsideContextMaintainsLength xs x contra in
+          reflexive
+
+{-
 %hint
-wellFormedTermMappingAp : {a : Variable} -> v a => WellFormedTerm v t => (t1 : Term _) -> {auto wfT1 : WellFormedTerm v t1} -> WellFormedTerm v (mappingAp (a, t) t1)
+wellFormedTermMappingAp : {a : Variable} -> a `Elem` context => WellFormedTerm (`Elem` context) t => (t1 : Term _) -> {auto wfT1 : WellFormedTerm (`Elem` context) t1} -> WellFormedTerm (`Elem` (context `remove` a)) (mappingAp (a, t) t1)
 wellFormedTermMappingAp (Val x) = %search
 wellFormedTermMappingAp (Var k) with (decEq a k)
   wellFormedTermMappingAp (Var k) | (Yes Refl) = %search
@@ -184,17 +222,28 @@ wellFormedTermMappingAp (Var k) with (decEq a k)
 wellFormedTermMappingAp (Pair x y) {wfT1 = WFPair wfX wfY} = WFPair (wellFormedTermMappingAp x) (wellFormedTermMappingAp y)
 
 %hint
-wellFormedCListSubAp : {a : Variable} -> v a => WellFormedTerm v t => (c : ConstraintList _) -> {auto wfC : WellFormedCList v c} -> WellFormedCList v ([(a, t)] `subApConList` c)
+wellFormedCListSubAp : {a : Variable} -> a `Elem` context => WellFormedTerm (`Elem` context) t => (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
 wellFormedCListSubAp [] = []
 wellFormedCListSubAp ((t1, t2) :: y) {wfC = (wfT1, wfT2) :: wfCTail} = (wellFormedTermMappingAp t1, wellFormedTermMappingAp t2) :: wellFormedCListSubAp y
 
-{-
+%hint
+wellFormedCListVarConstraintCons : (a : Variable) -> v a => (t : Term _) -> WellFormedTerm v t => (c : ConstraintList _) -> WellFormedCList v c => WellFormedCList v ((Var a `eqCon` t) :: c)
+wellFormedCListVarConstraintCons a t c = (WFVar %search, %search) :: %search
+
 ||| Lemma 7
-subApDecreasesDegree : {context : VarContext} -> {0 a : Variable} -> {t : Term _} -> let v := (`Elem` context) in v a => WellFormedTerm v t => (c : ConstraintList _) -> WellFormedCList v c => DegreeLT (degree ([(a, t)] `subApConList` c)) (degree ((Var a `eqCon` t) :: c))
-subApDecreasesDegree [] = FstLT (LTESucc LTEZero)
-subApDecreasesDegree (x :: y) with (subApDecreasesDegree {t} y) -- DegreeLT (length (fvConList (subApConList [(a, t)] y)), size (subApConList [(a, t)] y)) (length (fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (a :: nubBy' Nat [a] (\arg, arg => equalNat arg arg) (deleteBy (\arg, arg => equalNat arg arg) a (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fv t)))) (fvConList y)), plus (size y) (S (size t)))
-  _ | FstLT fstLT = FstLT ?hole2
-  _ | SndLT fstEq sndLT = ?hole_1
+||| See varctxt_lt_constraints_varl in rodrigogribeiro/unification.
+subApDecreasesDegree : {context : VarContext} -> {0 a : Variable} -> {t : Term _} -> {auto aInContext : a `Elem` context} -> {auto wfT : WellFormedTerm (`Elem` context) t} -> (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> DegreeLT (degree @{wellFormedCListSubAp @{aInContext} @{wfT} {t} c @{wfC}} ([(a, t)] `subApConList` c)) (degree @{wellFormedCListVarConstraintCons a @{aInContext} t @{wfT} c @{wfC}} ((Var a `eqCon` t) :: c))
+subApDecreasesDegree [] = %search
+subApDecreasesDegree (x :: y) {wfC = _ :: wfY} with (subApDecreasesDegree {t, aInContext, wfT} y) -- DegreeLT (length (fvConList (subApConList [(a, t)] y)), size (subApConList [(a, t)] y)) (length (fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (a :: nubBy' Nat [a] (\arg, arg => equalNat arg arg) (deleteBy (\arg, arg => equalNat arg arg) a (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fv t)))) (fvConList y)), plus (size y) (S (size t)))
+  _ | FstLT fstLT = %search
+  _ | SndLT Refl sndLT =
+    let
+      sizeXLTProof : LT (plus (size (subApConList [(a, t)] y)) (size x)) (plus (plus (size y) (size x)) (S (size t)))
+      sizeXLTProof =
+        rewrite sym $ plusSuccRightSucc (size y + size x) (size t) in
+        LTESucc $
+        ?hole2
+    in SndLT Refl ?hole--%search
 
   -- DegreeLT (length (fvConList (subApConList [(a, t)] y) ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fvCon (subApCon [(a, t)] x))) (fvConList (subApConList [(a, t)] y))), plus (size (subApConList [(a, t)] y)) (size (subApCon [(a, t)] x))) (length ((fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fvCon x)) (fvConList y)) ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (a :: nubBy' Nat [a] (\arg, arg => equalNat arg arg) (deleteBy (\arg, arg => equalNat arg arg) a (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fv t)))) (fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fvCon x)) (fvConList y))), plus (plus (size y) (size x)) (S (size t)))
 

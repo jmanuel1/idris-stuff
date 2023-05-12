@@ -13,6 +13,7 @@ fv (Var i) = [i]
 fv (Val x) = []
 fv (Pair x y) = fv x `union` fv y
 
+public export
 Sized (Term a) where
   size (Var i) = 1
   size (Val x) = 1
