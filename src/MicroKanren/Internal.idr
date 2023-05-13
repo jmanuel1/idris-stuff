@@ -190,6 +190,9 @@ data DegreeLT : (Nat, Nat) -> (Nat, Nat) -> Type where
   FstLT : LT a b -> DegreeLT (a, _) (b, _)
   SndLT : c === d -> LT a b -> DegreeLT (c, a) (d, b)
 
+ConstraintListLT : (c1, c2 : ConstraintList _) -> {context1, context2 : VarContext} -> WellFormedCList (`Elem` context1) c1 => WellFormedCList (`Elem` context2) c2 => Type
+ConstraintListLT c1 c2 = DegreeLT (degree {context = context1} c1) (degree {context = context2} c2)
+
 removeVarOutsideContextMaintainsLength : (context : VarContext) -> (a : Variable) -> Not (a `Elem` context) -> length (context `remove` a) === length context
 removeVarOutsideContextMaintainsLength [] _ _ = Refl
 removeVarOutsideContextMaintainsLength (x :: xs) a outsideContext with (decEq x a)
@@ -245,27 +248,25 @@ weakenContextMembership (x :: xs) inContext with (decEq x a) | (inContext)
   _ | (No _) | There inXs = There (weakenContextMembership xs inXs)
   _ | (Yes Refl) | _ = There (weakenContextMembership xs inContext)
 
+%hint
 weakenContextWFTerm : (context : VarContext) -> {a : Variable} -> WellFormedTerm (`Elem` (context `remove` a)) t -> WellFormedTerm (`Elem` context) t
 weakenContextWFTerm context (WFVar elem) = WFVar (weakenContextMembership context elem)
 weakenContextWFTerm context WFVal = WFVal
 weakenContextWFTerm context (WFPair fst snd) = WFPair (weakenContextWFTerm context fst) (weakenContextWFTerm context snd)
 
-{-
 ||| Lemma 7
 ||| See varctxt_lt_constraints_varl in rodrigogribeiro/unification.
-subApDecreasesDegree : {context : VarContext} -> {0 a : Variable} -> {t : Term _} -> {auto aInContext : a `Elem` context} -> {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} -> (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> DegreeLT (degree @{wellFormedCListSubAp @{aInContext} @{wfT} {t} c @{wfC}} ([(a, t)] `subApConList` c)) (degree @{wellFormedCListVarConstraintCons a @{aInContext} t @{wfT} c @{wfC}} ((Var a `eqCon` t) :: c))
-subApDecreasesDegree [] = %search
-subApDecreasesDegree (x :: y) {wfC = _ :: wfY} with (subApDecreasesDegree {t, aInContext, wfT} y)
-  _ | FstLT fstLT = %search
-  _ | SndLT Refl sndLT =
-    let
-      sizeXLTProof : LT (plus (size (subApConList [(a, t)] y)) (size x)) (plus (plus (size y) (size x)) (S (size t)))
-      sizeXLTProof =
-        rewrite sym $ plusSuccRightSucc (size y + size x) (size t) in
-        LTESucc $
-        ?hole2
-    in SndLT Refl ?hole--%search
+subApDecreasesDegree : {context : VarContext} -> {a : Variable} ->
+  {auto aInContext : a `Elem` context} -> {valTy : Type} -> {t : Term valTy} ->
+  {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} ->
+  (c : ConstraintList valTy) ->
+  {auto wfC : WellFormedCList (`Elem` context) c} ->
+  ConstraintListLT
+    @{wellFormedCListSubAp @{aInContext} @{wfT} c} ([(a, t)] `subApConList` c)
+    @{wellFormedCListVarConstraintCons a @{%search} t @{weakenContextWFTerm context {a} wfT} c} ((Var a `eqCon` t) :: c)
+subApDecreasesDegree _ = FstLT $ removeVarInContextDecreasesLength context a aInContext
 
+{-
 covering
 walk : Term a -> Substitution a -> Term a
 walk u s = case u of
