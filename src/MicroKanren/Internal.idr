@@ -99,6 +99,12 @@ InVarContext v unifier = Not (v `InDom` unifier)
 VarContext : Type
 VarContext = List Variable
 
+remove : VarContext -> Variable -> VarContext
+remove [] _ = []
+remove (x :: xs) v with (decEq x v)
+  _ | (No _) = x :: (xs `remove` v)
+  _ | (Yes _) = xs `remove` v
+
 %hint
 notInDomCons : {var1, a : Variable} -> (InDom var1 s1 -> Void) -> (a === var1 -> Void) -> (InDom var1 ((a, t) :: s1) -> Void)
 notInDomCons prf at (MkInDom f) with (decEq a var1)
@@ -154,8 +160,17 @@ decideOccurs a (Pair x y) with (decideOccurs a x) | (decideOccurs a y)
 
 ||| Lemma 5
 %hint
-differentVarsInContext : {a1, a2 : Variable} -> (v : Variable -> Type) -> v a => Not (a2 === a1) -> (v a, Not (a2 === a1))
-differentVarsInContext v contra = (%search, contra)
+differentVarsInContext : {a1, a2 : Variable} -> (context : VarContext) -> a1 `Elem` context -> Not (a2 === a1) -> (a1 `Elem` (context `remove` a2))
+differentVarsInContext [] _ contra impossible
+differentVarsInContext (x :: xs) a1InContext contra with (decEq x a2) | (a1InContext)
+  _ | (No _) | There a1InXs =
+    let subprf = differentVarsInContext xs a1InXs contra in
+    There subprf
+  _ | (No _) | Here = Here
+  _ | (Yes _) | There a1InXs =
+    let subprf = differentVarsInContext xs a1InXs contra in
+    subprf
+  _ | (Yes Refl) | Here = void $ contra Refl
 
 ||| Lemma 6
 %hint
@@ -174,12 +189,6 @@ degree c = (length context, size c)
 data DegreeLT : (Nat, Nat) -> (Nat, Nat) -> Type where
   FstLT : LT a b -> DegreeLT (a, _) (b, _)
   SndLT : c === d -> LT a b -> DegreeLT (c, a) (d, b)
-
-remove : VarContext -> Variable -> VarContext
-remove [] _ = []
-remove (x :: xs) v with (decEq x v)
-  _ | (No _) = x :: (xs `remove` v)
-  _ | (Yes _) = xs `remove` v
 
 removeVarOutsideContextMaintainsLength : (context : VarContext) -> (a : Variable) -> Not (a `Elem` context) -> length (context `remove` a) === length context
 removeVarOutsideContextMaintainsLength [] _ _ = Refl
@@ -212,15 +221,15 @@ removeVarInContextDecreasesLength (x :: xs) a inContext with (decEq x a)
           rewrite removeVarOutsideContextMaintainsLength xs x contra in
           reflexive
 
-{-
 %hint
-wellFormedTermMappingAp : {a : Variable} -> a `Elem` context => WellFormedTerm (`Elem` context) t => (t1 : Term _) -> {auto wfT1 : WellFormedTerm (`Elem` context) t1} -> WellFormedTerm (`Elem` (context `remove` a)) (mappingAp (a, t) t1)
+wellFormedTermMappingAp : {a : Variable} -> {context : VarContext} -> a `Elem` context => WellFormedTerm (`Elem` (context `remove` a)) t => (t1 : Term _) -> {auto wfT1 : WellFormedTerm (`Elem` context) t1} -> WellFormedTerm (`Elem` (context `remove` a)) (mappingAp (a, t) t1)
 wellFormedTermMappingAp (Val x) = %search
 wellFormedTermMappingAp (Var k) with (decEq a k)
   wellFormedTermMappingAp (Var k) | (Yes Refl) = %search
-  wellFormedTermMappingAp (Var k) | (No contra) = %search
+  wellFormedTermMappingAp (Var k) | (No contra) = let WFVar kInContext = wfT1 in WFVar $ differentVarsInContext context kInContext contra
 wellFormedTermMappingAp (Pair x y) {wfT1 = WFPair wfX wfY} = WFPair (wellFormedTermMappingAp x) (wellFormedTermMappingAp y)
 
+{-
 %hint
 wellFormedCListSubAp : {a : Variable} -> a `Elem` context => WellFormedTerm (`Elem` context) t => (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
 wellFormedCListSubAp [] = []
