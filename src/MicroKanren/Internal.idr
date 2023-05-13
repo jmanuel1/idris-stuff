@@ -229,9 +229,8 @@ wellFormedTermMappingAp (Var k) with (decEq a k)
   wellFormedTermMappingAp (Var k) | (No contra) = let WFVar kInContext = wfT1 in WFVar $ differentVarsInContext context kInContext contra
 wellFormedTermMappingAp (Pair x y) {wfT1 = WFPair wfX wfY} = WFPair (wellFormedTermMappingAp x) (wellFormedTermMappingAp y)
 
-{-
 %hint
-wellFormedCListSubAp : {a : Variable} -> a `Elem` context => WellFormedTerm (`Elem` context) t => (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
+wellFormedCListSubAp : {a : Variable} -> {context : VarContext} -> a `Elem` context => WellFormedTerm (`Elem` (context `remove` a)) t => (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
 wellFormedCListSubAp [] = []
 wellFormedCListSubAp ((t1, t2) :: y) {wfC = (wfT1, wfT2) :: wfCTail} = (wellFormedTermMappingAp t1, wellFormedTermMappingAp t2) :: wellFormedCListSubAp y
 
@@ -239,11 +238,24 @@ wellFormedCListSubAp ((t1, t2) :: y) {wfC = (wfT1, wfT2) :: wfCTail} = (wellForm
 wellFormedCListVarConstraintCons : (a : Variable) -> v a => (t : Term _) -> WellFormedTerm v t => (c : ConstraintList _) -> WellFormedCList v c => WellFormedCList v ((Var a `eqCon` t) :: c)
 wellFormedCListVarConstraintCons a t c = (WFVar %search, %search) :: %search
 
+weakenContextMembership : (context : VarContext) -> {a : Variable} -> v `Elem` (context `remove` a) -> v `Elem` context
+weakenContextMembership [] inContext = inContext
+weakenContextMembership (x :: xs) inContext with (decEq x a) | (inContext)
+  _ | (No _) | Here = Here
+  _ | (No _) | There inXs = There (weakenContextMembership xs inXs)
+  _ | (Yes Refl) | _ = There (weakenContextMembership xs inContext)
+
+weakenContextWFTerm : (context : VarContext) -> {a : Variable} -> WellFormedTerm (`Elem` (context `remove` a)) t -> WellFormedTerm (`Elem` context) t
+weakenContextWFTerm context (WFVar elem) = WFVar (weakenContextMembership context elem)
+weakenContextWFTerm context WFVal = WFVal
+weakenContextWFTerm context (WFPair fst snd) = WFPair (weakenContextWFTerm context fst) (weakenContextWFTerm context snd)
+
+{-
 ||| Lemma 7
 ||| See varctxt_lt_constraints_varl in rodrigogribeiro/unification.
-subApDecreasesDegree : {context : VarContext} -> {0 a : Variable} -> {t : Term _} -> {auto aInContext : a `Elem` context} -> {auto wfT : WellFormedTerm (`Elem` context) t} -> (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> DegreeLT (degree @{wellFormedCListSubAp @{aInContext} @{wfT} {t} c @{wfC}} ([(a, t)] `subApConList` c)) (degree @{wellFormedCListVarConstraintCons a @{aInContext} t @{wfT} c @{wfC}} ((Var a `eqCon` t) :: c))
+subApDecreasesDegree : {context : VarContext} -> {0 a : Variable} -> {t : Term _} -> {auto aInContext : a `Elem` context} -> {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} -> (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> DegreeLT (degree @{wellFormedCListSubAp @{aInContext} @{wfT} {t} c @{wfC}} ([(a, t)] `subApConList` c)) (degree @{wellFormedCListVarConstraintCons a @{aInContext} t @{wfT} c @{wfC}} ((Var a `eqCon` t) :: c))
 subApDecreasesDegree [] = %search
-subApDecreasesDegree (x :: y) {wfC = _ :: wfY} with (subApDecreasesDegree {t, aInContext, wfT} y) -- DegreeLT (length (fvConList (subApConList [(a, t)] y)), size (subApConList [(a, t)] y)) (length (fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (a :: nubBy' Nat [a] (\arg, arg => equalNat arg arg) (deleteBy (\arg, arg => equalNat arg arg) a (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fv t)))) (fvConList y)), plus (size y) (S (size t)))
+subApDecreasesDegree (x :: y) {wfC = _ :: wfY} with (subApDecreasesDegree {t, aInContext, wfT} y)
   _ | FstLT fstLT = %search
   _ | SndLT Refl sndLT =
     let
@@ -253,9 +265,6 @@ subApDecreasesDegree (x :: y) {wfC = _ :: wfY} with (subApDecreasesDegree {t, aI
         LTESucc $
         ?hole2
     in SndLT Refl ?hole--%search
-
-  -- DegreeLT (length (fvConList (subApConList [(a, t)] y) ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fvCon (subApCon [(a, t)] x))) (fvConList (subApConList [(a, t)] y))), plus (size (subApConList [(a, t)] y)) (size (subApCon [(a, t)] x))) (length ((fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fvCon x)) (fvConList y)) ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (a :: nubBy' Nat [a] (\arg, arg => equalNat arg arg) (deleteBy (\arg, arg => equalNat arg arg) a (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fv t)))) (fvConList y ++ foldl (\x, y => deleteBy (\arg, arg => equalNat arg arg) y x) (nubBy' Nat [] (\arg, arg => equalNat arg arg) (fvCon x)) (fvConList y))), plus (plus (size y) (size x)) (S (size t)))
-
 
 covering
 walk : Term a -> Substitution a -> Term a
