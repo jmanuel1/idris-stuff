@@ -1,5 +1,6 @@
 module MicroKanren.Internal
 
+import Control.Relation
 import Control.WellFounded
 import Data.List
 import Data.List.Elem
@@ -180,15 +181,30 @@ notOccursWellFormed (Val x) contra = WFVal
 notOccursWellFormed (Pair x y) @{WFPair wfX wfY} contra =
   WFPair (notOccursWellFormed x (\z => contra (OccursFst z))) (notOccursWellFormed y (\z => contra (OccursSnd z)))
 
--- record ConstraintListInContext (context : VarContext) (constraints : ConstraintList a) where
---   wellFormedPrf : WellFormedCList (`Elem` context) constraints
-
 degree : {context : VarContext} -> (c : ConstraintList a) -> WellFormedCList (`Elem` context) c => (Nat, Nat)
 degree c = (length context, size c)
 
-data DegreeLT : (Nat, Nat) -> (Nat, Nat) -> Type where
-  FstLT : LT a b -> DegreeLT (a, _) (b, _)
-  SndLT : c === d -> LT a b -> DegreeLT (c, a) (d, b)
+data LexLT : (relA : Rel a) -> (relB : Rel b) -> Rel (a, b) where
+  FstLT : relA a b -> LexLT relA relB (a, c) (b, d)
+  SndLT : relB a b -> LexLT relA relB (c, a) (c, b)
+
+DegreeLT : Rel (Nat, Nat)
+DegreeLT = LexLT LT LT
+
+{- Well-founded lexicographic orders: an Idris translation of Agda's
+Lexicographic.
+https://agda.github.io/agda-stdlib/Induction.WellFounded.html#6170. -}
+mutual
+  degreeAccess : {x : a} -> {y : b} -> Accessible relA x -> WellFounded b relB -> Accessible (LexLT relA relB) (x, y)
+  degreeAccess accA wfB =
+    Access (degreeAccess' accA (wellFounded y) wfB)
+
+  degreeAccess' : {x : a} -> {y : b} -> Accessible relA x -> Accessible relB y -> WellFounded b relB -> ((z : (a, b)) -> LexLT relA relB z (x, y) -> Accessible (LexLT relA relB) z)
+  degreeAccess' (Access rsA) _ wfB _ (FstLT zxLessX) = degreeAccess (rsA _ zxLessX) wfB
+  degreeAccess' accA (Access rsB) wfB _ (SndLT zyLessY) = Access (degreeAccess' accA (rsB _ zyLessY) wfB)
+
+WellFounded a relA => WellFounded b relB => WellFounded (a, b) (LexLT relA relB) where
+  wellFounded (x, y) = degreeAccess (wellFounded x) %search
 
 ConstraintListLT : (c1, c2 : ConstraintList _) -> {context1, context2 : VarContext} -> WellFormedCList (`Elem` context1) c1 => WellFormedCList (`Elem` context2) c2 => Type
 ConstraintListLT c1 c2 = DegreeLT (degree {context = context1} c1) (degree {context = context2} c2)
