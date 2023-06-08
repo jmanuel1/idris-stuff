@@ -76,26 +76,7 @@ subApConList : Substitution a -> (ConstraintList a -> ConstraintList a)
 subApConList s [] = []
 subApConList s (x :: y) = (s `subApCon` x) :: (s `subApConList` y)
 
-data InDom : Variable -> Substitution ty -> Type where
-  MkInDom : Not ((s `subAp` Var a) === Var a) -> a `InDom` s
-
--- inDomCons : {v, consVar : Variable} -> (s : Substitution a) -> {consTerm : Term a} -> InDom v s -> InDom v ((consVar, consTerm) :: s)
--- inDomCons [] (MkInDom contra) = MkInDom (\prf => contra Refl)
--- inDomCons (m'@(w, t) :: s) (MkInDom contra) with (decEq w v) | (decEq consVar v)
---   _ | No contraWVEq | No contraCVVEq =
---     let MkInDom contraS = inDomCons {v, consVar = w, consTerm = t} s (MkInDom $ \prf => contra prf) in
---     MkInDom ?holeDomCons1
---   _ | _ | Yes Refl = ?holeDomCons4
---   inDomCons ((_, _) :: s) (MkInDom contra) | Yes Refl | bluh = ?holeDomCons3
-
--- dom : (s : Substitution a) -> List (v : Variable ** InDom v s)
-dom : (s : Substitution a) -> List Variable
-dom s = map fst s
-
 -- I think Lemma 3 from Ribeiro & Camarão is not needed to prove termination.
-
-InVarContext : Variable -> Substitution a -> Type
-InVarContext v unifier = Not (v `InDom` unifier)
 
 VarContext : Type
 VarContext = List Variable
@@ -106,21 +87,11 @@ remove (x :: xs) v with (decEq x v)
   _ | (No _) = x :: (xs `remove` v)
   _ | (Yes _) = xs `remove` v
 
-%hint
-notInDomCons : {var1, a : Variable} -> (InDom var1 s1 -> Void) -> (a === var1 -> Void) -> (InDom var1 ((a, t) :: s1) -> Void)
-notInDomCons prf at (MkInDom f) with (decEq a var1)
-  _ | No contra = prf (MkInDom f)
-  _ | Yes Refl = at Refl
+removeDomOf : VarContext -> Substitution a -> VarContext
+removeDomOf context [] = context
+removeDomOf context ((a, _) :: s) = (context `remove` a) `removeDomOf` s
 
--- %hint
--- wfSubEnd : (s1 : Substitution a) -> (term : Term a) -> v var1 => (InDom var1 s1 -> Void) => {auto wfTerm : WellFormedTerm (\var => (v var, var = var1 -> Void)) term} -> {auto wfS1 : WellFormedSub v s1} -> WellFormedSub v (s1 ++ [(var1, term)])
--- -- wfSubEnd [] (Var i) = (%search, ?hole5) :: ?hole4
--- -- wfSubEnd [] (Val x) = (%search, ?hole6) :: ?hole8
--- -- wfSubEnd [] (Pair x y) = (%search, ?hole7) :: ?hole9
--- wfSubEnd [] term = [(%search, %search)]
--- wfSubEnd ((x, y) :: xs) term {wfS1 = wf :: wfs} = wf :: {-?hole9-} wfSubEnd @{(%search, ?hole13)} @{?hole12} @{?hole10} {wfS1 = ?hole11} xs term
-
-subCompose : (s2, s1 : Substitution a) -> {auto 0 _ : WellFormedSub v s1} -> {auto 0 _ : WellFormedSub (\var => (v var, var `InVarContext` s1)) s2} -> Substitution a
+subCompose : (s2, s1 : Substitution a) -> {auto 0 _ : WellFormedSub (`Elem` context) s1} -> {auto 0 _ : WellFormedSub (`Elem` (context `removeDomOf` s1)) s2} -> Substitution a
 subCompose s2 s1 = s1 ++ s2
 
 applySubEnd : (s1 : Substitution a) -> (m : (Variable, Term a)) -> (t : Term a) -> subAp (s1 ++ [m]) t === mappingAp m (subAp s1 t)
@@ -138,7 +109,7 @@ subAppendApplication s1 (m :: s2') =
   subprf
 
 ||| Theorem 1
-subComposeApplication : {0 v : Variable -> Type} -> {0 t : Term a} -> (s1, s2 : Substitution a) -> {0 wfS1 : WellFormedSub v s1} -> {0 wfS2 : WellFormedSub {a} (\var => (v var, InVarContext {a} var s1)) s2} -> ((subCompose {v} @{wfS1} @{wfS2} s2 s1) `subAp` t) === (s2 `subAp` (s1 `subAp` t))
+subComposeApplication : {context : VarContext} -> {0 t : Term a} -> (s1, s2 : Substitution a) -> {0 wfS1 : WellFormedSub (`Elem` context) s1} -> {0 wfS2 : WellFormedSub {a} (`Elem` (context `removeDomOf` s1)) s2} -> ((subCompose @{wfS1} @{wfS2} s2 s1) `subAp` t) === (s2 `subAp` (s1 `subAp` t))
 subComposeApplication s1 s2 = subAppendApplication s1 s2
 
 data Occurs : Variable -> Term a -> Type where
