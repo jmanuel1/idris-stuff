@@ -253,6 +253,18 @@ subApDecreasesDegree : {context : VarContext} -> {a : Variable} ->
     @{wellFormedCListVarConstraintCons a @{%search} t @{weakenContextWFTerm context {a} wfT} c} ((Var a `eqCon` t) :: c)
 subApDecreasesDegree _ = FstLT $ removeVarInContextDecreasesLength context a aInContext
 
+-- TODO: This type signature makes type checking slower. Maybe because of the
+-- impilcit search. Check the %hints.
+||| Lemma 8
+%hint
+fewerPairsImpliesLowerDegree : {t1, t1', t2, t2' : Term valTy} -> {c : ConstraintList valTy} -> WellFormedTerm (`Elem` context) t1 => WellFormedTerm (`Elem` context) t2 => WellFormedTerm (`Elem` context) t1' => WellFormedTerm (`Elem` context) t2' => WellFormedCList (`Elem` context) c => ConstraintListLT {context1 = context, context2 = context} ((t1 `eqCon` t1') :: (t2 `eqCon` t2') :: c) (((Pair t1 t2) `eqCon` (Pair t1' t2')) :: c)
+fewerPairsImpliesLowerDegree = SndLT $ splitPairConstraintDecreasesSize c
+
+||| Lemma 9
+%hint
+fewerConstraintsImpliesLowerDegree : {t, t' : Term valTy} -> {c : ConstraintList valTy} -> WellFormedTerm (`Elem` context) t => WellFormedTerm (`Elem` context) t' => WellFormedCList (`Elem` context) c => ConstraintListLT {context1 = context, context2 = context} c ((t `eqCon` t') :: c)
+fewerConstraintsImpliesLowerDegree = SndLT $ removeConstraintDecreasesSize t t'
+
 {-
 covering
 walk : Term a -> Substitution a -> Term a
