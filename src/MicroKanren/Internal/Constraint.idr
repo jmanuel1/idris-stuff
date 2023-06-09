@@ -109,6 +109,7 @@ splitPairConstraintDecreasesSize (x :: xs) =
   plusSizeX
 
 ||| Lemma 2
+public export
 removeConstraintDecreasesSize : (t, t' : Term a) -> {c : ConstraintList a} -> Smaller (size c) (size ((t `eqCon` t') :: c))
 removeConstraintDecreasesSize (Var v) t' =
   rewrite sym $ plusSuccRightSucc (size c) (size t') in

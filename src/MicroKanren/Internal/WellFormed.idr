@@ -1,10 +1,24 @@
 module MicroKanren.Internal.WellFormed
 
+import Data.List.Elem
 import Data.List.Quantifiers
+import Data.Nat
+import Decidable.Equality
 import MicroKanren.Internal.Constraint
 import MicroKanren.Internal.Types
 
 %default total
+
+public export
+VarContext : Type
+VarContext = List Variable
+
+public export
+remove : VarContext -> Variable -> VarContext
+remove [] _ = []
+remove (x :: xs) v with (decEq x v)
+  _ | (No _) = x :: (xs `remove` v)
+  _ | (Yes _) = xs `remove` v
 
 public export
 data WellFormedTerm : (Variable -> Type) -> Term a -> Type where
@@ -34,6 +48,6 @@ namespace CList
 
 namespace Substitution
   public export
-  data WellFormedSub : (Variable -> Type) -> Substitution a -> Type where
-    Nil : WellFormedSub v [] -- ?
-    (::) : (v a, WellFormedTerm (\var => (v var, Not (var === a))) t) -> WellFormedSub (\var => (v var, Not (var === a))) s' -> WellFormedSub v ((a, t) :: s')
+  data WellFormedSub : VarContext -> Substitution a -> Type where
+    Nil : WellFormedSub _ []
+    (::) : (a `Elem` context, WellFormedTerm (`Elem` (context `remove` a)) t) -> WellFormedSub (context `remove` a) s' -> WellFormedSub context ((a, t) :: s')

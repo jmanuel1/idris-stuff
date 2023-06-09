@@ -79,20 +79,11 @@ subApConList s (x :: y) = (s `subApCon` x) :: (s `subApConList` y)
 
 -- I think Lemma 3 from Ribeiro & Camarão is not needed to prove termination.
 
-VarContext : Type
-VarContext = List Variable
-
-remove : VarContext -> Variable -> VarContext
-remove [] _ = []
-remove (x :: xs) v with (decEq x v)
-  _ | (No _) = x :: (xs `remove` v)
-  _ | (Yes _) = xs `remove` v
-
 removeDomOf : VarContext -> Substitution a -> VarContext
 removeDomOf context [] = context
 removeDomOf context ((a, _) :: s) = (context `remove` a) `removeDomOf` s
 
-subCompose : (s2, s1 : Substitution a) -> {auto 0 _ : WellFormedSub (`Elem` context) s1} -> {auto 0 _ : WellFormedSub (`Elem` (context `removeDomOf` s1)) s2} -> Substitution a
+subCompose : (s2, s1 : Substitution a) -> {auto 0 _ : WellFormedSub context s1} -> {auto 0 _ : WellFormedSub (context `removeDomOf` s1) s2} -> Substitution a
 subCompose s2 s1 = s1 ++ s2
 
 applySubEnd : (s1 : Substitution a) -> (m : (Variable, Term a)) -> (t : Term a) -> subAp (s1 ++ [m]) t === mappingAp m (subAp s1 t)
@@ -110,7 +101,7 @@ subAppendApplication s1 (m :: s2') =
   subprf
 
 ||| Theorem 1
-subComposeApplication : {context : VarContext} -> {0 t : Term a} -> (s1, s2 : Substitution a) -> {0 wfS1 : WellFormedSub (`Elem` context) s1} -> {0 wfS2 : WellFormedSub {a} (`Elem` (context `removeDomOf` s1)) s2} -> ((subCompose @{wfS1} @{wfS2} s2 s1) `subAp` t) === (s2 `subAp` (s1 `subAp` t))
+subComposeApplication : {context : VarContext} -> {0 t : Term a} -> (s1, s2 : Substitution a) -> {0 wfS1 : WellFormedSub context s1} -> {0 wfS2 : WellFormedSub {a} (context `removeDomOf` s1) s2} -> ((subCompose @{wfS1} @{wfS2} s2 s1) `subAp` t) === (s2 `subAp` (s1 `subAp` t))
 subComposeApplication s1 s2 = subAppendApplication s1 s2
 
 data Occurs : Variable -> Term a -> Type where
@@ -147,8 +138,8 @@ differentVarsInContext (x :: xs) a1InContext contra with (decEq x a2) | (a1InCon
 
 ||| Lemma 6
 %hint
-notOccursWellFormed : (t : Term ty) -> WellFormedTerm v t => Not (Occurs a t) -> WellFormedTerm (\var => (v var, Not (var === a))) t
-notOccursWellFormed (Var i) @{WFVar iInContext} contra = WFVar (iInContext, \Refl => contra OccursVar)
+notOccursWellFormed : (t : Term ty) -> {context : VarContext} -> WellFormedTerm (`Elem` context) t => {a : Variable} -> Not (Occurs a t) -> WellFormedTerm (`Elem` (context `remove` a)) t
+notOccursWellFormed (Var i) @{WFVar iInContext} contra = WFVar (differentVarsInContext context iInContext $ \prf => contra $ rewrite sym prf in OccursVar)
 notOccursWellFormed (Val x) contra = WFVal
 notOccursWellFormed (Pair x y) @{WFPair wfX wfY} contra =
   WFPair (notOccursWellFormed x (\z => contra (OccursFst z))) (notOccursWellFormed y (\z => contra (OccursSnd z)))
@@ -228,7 +219,7 @@ wellFormedTermMappingAp (Var k) with (decEq a k)
 wellFormedTermMappingAp (Pair x y) {wfT1 = WFPair wfX wfY} = WFPair (wellFormedTermMappingAp x) (wellFormedTermMappingAp y)
 
 %hint
-wellFormedCListSubAp : {a : Variable} -> {context : VarContext} -> a `Elem` context => WellFormedTerm (`Elem` (context `remove` a)) t => (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
+wellFormedCListSubAp : {a : Variable} -> {context : VarContext} -> a `Elem` context => {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} -> (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
 wellFormedCListSubAp [] = []
 wellFormedCListSubAp ((t1, t2) :: y) {wfC = (wfT1, wfT2) :: wfCTail} = (wellFormedTermMappingAp t1, wellFormedTermMappingAp t2) :: wellFormedCListSubAp y
 
@@ -251,8 +242,9 @@ weakenContextWFTerm context (WFPair fst snd) = WFPair (weakenContextWFTerm conte
 
 ||| Lemma 7
 ||| See varctxt_lt_constraints_varl in rodrigogribeiro/unification.
+%hint
 subApDecreasesDegree : {context : VarContext} -> {a : Variable} ->
-  {auto aInContext : a `Elem` context} -> {valTy : Type} -> {t : Term valTy} ->
+  {auto aInContext : a `Elem` context} -> {0 valTy : Type} -> {t : Term valTy} ->
   {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} ->
   (c : ConstraintList valTy) ->
   {auto wfC : WellFormedCList (`Elem` context) c} ->
