@@ -7,6 +7,7 @@ import Data.List.Elem
 import Data.List.Quantifiers
 import Data.Nat
 import Data.SortedMap
+import Decidable.Order.Strict
 import Deriving.Functor
 import MicroKanren.Internal.Constraint
 import MicroKanren.Internal.Types
@@ -156,22 +157,29 @@ degree : {context : VarContext} -> (c : ConstraintList a) -> WellFormedCList (`E
 degree c = (length context, size c)
 
 data LexLT : (relA : Rel a) -> (relB : Rel b) -> Rel (a, b) where
-  FstLT : relA a b -> LexLT relA relB (a, c) (b, d)
-  SndLT : relB a b -> LexLT relA relB (c, a) (c, b)
+  FstLT : {0 x : a} -> {0 y : a} -> relA x y -> LexLT relA relB (x, c) (y, d)
+  SndLT : {0 x : b} -> {0 y : b} -> relB x y -> LexLT relA relB (c, x) (c, y)
+
+Irreflexive a relA => Irreflexive b relB => Irreflexive (a, b) (LexLT relA relB) where
+  irreflexive (FstLT xx) = irreflexive {rel = relA} xx
+  irreflexive (SndLT xx) = irreflexive {rel = relB} xx
 
 DegreeLT : Rel (Nat, Nat)
 DegreeLT = LexLT LT LT
+
+ltTransitiveS : {a, b, c : Nat} -> LT a b -> LT b (S c) -> LT a c
+ltTransitiveS ab (LTESucc bc) = transitive ab bc
 
 {- Well-founded lexicographic orders: an Idris translation of Agda's
 Lexicographic.
 https://agda.github.io/agda-stdlib/Induction.WellFounded.html#6170. -}
 mutual
-  degreeAccess : {x : a} -> {y : b} -> Accessible relA x -> WellFounded b relB -> Accessible (LexLT relA relB) (x, y)
+  degreeAccess : {y : b} -> Accessible relA x -> WellFounded b relB -> Accessible (LexLT relA relB) (x, y)
   degreeAccess accA wfB =
     Access (degreeAccess' accA (wellFounded y) wfB)
 
-  degreeAccess' : {x : a} -> {y : b} -> Accessible relA x -> Accessible relB y -> WellFounded b relB -> ((z : (a, b)) -> LexLT relA relB z (x, y) -> Accessible (LexLT relA relB) z)
-  degreeAccess' (Access rsA) _ wfB _ (FstLT zxLessX) = degreeAccess (rsA _ zxLessX) wfB
+  degreeAccess' : Accessible relA x -> Accessible relB y -> WellFounded b relB -> ((z : (a, b)) -> LexLT relA relB z (x, y) -> Accessible (LexLT relA relB) z)
+  degreeAccess' (Access rsA) accB wfB (zx, zy) (FstLT zxLessX) = degreeAccess (rsA zx zxLessX) wfB
   degreeAccess' accA (Access rsB) wfB _ (SndLT zyLessY) = Access (degreeAccess' accA (rsB _ zyLessY) wfB)
 
 WellFounded a relA => WellFounded b relB => WellFounded (a, b) (LexLT relA relB) where
