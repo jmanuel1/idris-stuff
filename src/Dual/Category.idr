@@ -152,3 +152,15 @@ mkKleisliCategory cat triple = MkCategory {
       --     = cat .compose (triple .extend c d h) (cat .compose (triple .extend b c g) f)
       cat.composeAssociative _ _ _ _ f (triple.extend b c g) (triple.extend c d h)
 }
+
+record Functor
+  (fromCat : Category fromObject fromArrow)
+  (toCat : Category toObject toArrow)
+  (functor : fromObject -> toObject) where
+  constructor MkFunctor
+  fmap : (a, b : fromObject) -> fromArrow a b -> toArrow (functor a) (functor b)
+  identity : (a : fromObject) -> fmap a a (fromCat.id a) === toCat.id (functor a)
+  composition :
+    (a, b, c : fromObject) ->
+    (f : fromArrow b c) -> (g : fromArrow a b) ->
+    fmap a c (fromCat.compose f g) === toCat.compose (fmap b c f) (fmap a b g)
