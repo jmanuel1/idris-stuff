@@ -7,6 +7,7 @@ import Control.Function.FunExt
 import Data.Morphisms
 import Deriving.Functor
 import Dual.Category
+import Dual.Category.Idris
 import Syntax.WithProof
 
 %default total
@@ -60,62 +61,8 @@ example =
 
 {- The Kleisli category of the continuation monad is cocartesian coclosed if the
 underlying category is cartesian closed and has coproducts. So, let's show that
-Idris (the non-dependent fragment) is cartesian closed first. -}
-
-IdrisCat : Category Type (~>)
-IdrisCat = MkCategory {
-  id = \_ => Mor id,
-  compose = \(Mor f), (Mor g) => Mor (f . g),
-  idComposeRight = \a, b, (Mor f) => Refl,
-  idComposeLeft = \a, b, (Mor f) => Refl,
-  composeAssociative = \a, b, c, d, (Mor f), (Mor g), (Mor h) =>
-    Refl
-}
-
-etaPair : (p : (a, b)) -> (fst p, snd p) === p
-etaPair (a, b) = Refl
-
-idrisProduct : FunExt => (a, b : Type) -> Product Type (~>) IdrisCat a b
-idrisProduct a b = MkProduct {
-  product = (a, b),
-  pi = Mor fst,
-  pi' = Mor snd,
-  arrowProduct = \_, (Mor f), (Mor g) => Mor (\x => (f x, g x)),
-  diagramCommutes = \_, (Mor f), (Mor g) => (Refl, Refl),
-  arrowProductUnique = \c, (Mor g) =>
-    cong Mor (funExt $ \x => etaPair (g x))
-}
-
-idrisExponential : FunExt => (b, a : Type) -> Exponential Type (~>) IdrisCat b a
-idrisExponential b a = MkExponential {
-  exp = a -> b,
-  productARight = \o => idrisProduct o a,
-  eval = Mor (\x => fst x (snd x)),
-  curry = \_, (Mor f) => Mor (\x, y => f (x, y)),
-  diagramCommutes = \_, (Mor f) => cong Mor (funExt $ \x => cong f (etaPair x)),
-  curryUnique = \_, (Mor _) => Refl
-}
-
-idrisCartesian : FunExt => Cartesian Type (~>) IdrisCat
-idrisCartesian = MkCartesian {finiteProduct = idrisProduct}
-
-idrisCartesianClosed : FunExt => CartesianClosed Type (~>) IdrisCat
-idrisCartesianClosed = MkCartesianClosed {cartesian = idrisCartesian, exponential = idrisExponential}
-
-{- Show that Idris has coproducts. -}
-
-idrisCoproduct : FunExt => (a, b : Type) -> Coproduct Type (~>) IdrisCat a b
-idrisCoproduct a b = MkProduct {
-  product = Either a b,
-  pi = Mor Left,
-  pi' = Mor Right,
-  arrowProduct = \_, (Mor f), (Mor g) => Mor $ either f g,
-  diagramCommutes = \_, (Mor f), (Mor g) => (Refl, Refl),
-  arrowProductUnique = \_, (Mor g) =>
-    cong Mor (funExt $ \x => case x of
-      Left x => Refl
-      Right x => Refl)
-}
+Idris (the non-dependent fragment) is cartesian closed first. -- See
+Dual.Category.Idris. -}
 
 {- Now, to show that the Kleisli category of the continuation monad is
 cocartesian coclosed. -}

@@ -153,6 +153,7 @@ mkKleisliCategory cat triple = MkCategory {
       cat.composeAssociative _ _ _ _ f (triple.extend b c g) (triple.extend c d h)
 }
 
+public export
 record Functor
   (fromCat : Category fromObject fromArrow)
   (toCat : Category toObject toArrow)
