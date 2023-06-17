@@ -165,3 +165,36 @@ record Functor
     (a, b, c : fromObject) ->
     (f : fromArrow b c) -> (g : fromArrow a b) ->
     fmap a c (fromCat.compose f g) === toCat.compose (fmap b c f) (fmap a b g)
+
+export
+identityFunctor : Functor cat cat Prelude.id
+identityFunctor = MkFunctor {
+  fmap = \_, _, f => f,
+  identity = \_ => Refl,
+  composition = \_, _, _, _, _ => Refl
+}
+
+public export
+record Comonad
+  (cat : Category object arrow)
+  (comonad : object -> object) where
+  constructor MkComonad
+  functor : Functor cat cat comonad
+  extract : (a : object) -> (comonad a) `arrow` a
+  duplicate : (a : object) -> (comonad a) `arrow` (comonad (comonad a))
+  extractAfterDuplicateId : (a : object) -> cat.compose (extract (comonad a)) (duplicate a) === cat.id (comonad a)
+  fmapExtractAfterDuplicateId : (a : object) -> cat.compose (functor.fmap _ _ (extract a)) (duplicate a) === cat.id (comonad a)
+  duplicateAfterDuplicateFmap : (a : object) -> cat.compose (duplicate (comonad a)) (duplicate a) === cat.compose (functor.fmap _ _ (duplicate a)) (duplicate a)
+
+{- Identity is a comonad. -}
+
+export
+identityComonad : (cat : Category object arrow) -> Comonad cat Prelude.id
+identityComonad cat = MkComonad {
+  functor = identityFunctor,
+  extract = cat.id,
+  duplicate = cat.id,
+  extractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
+  fmapExtractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
+  duplicateAfterDuplicateFmap = \_ => Refl
+}

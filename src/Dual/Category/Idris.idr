@@ -8,6 +8,7 @@ import Dual.Category
 
 %default total
 
+public export
 IdrisCat : Category Type (~>)
 IdrisCat = MkCategory {
   id = \_ => Mor id,
