@@ -265,44 +265,14 @@ fewerPairsImpliesLowerDegree = SndLT $ splitPairConstraintDecreasesSize c
 fewerConstraintsImpliesLowerDegree : {t, t' : Term valTy} -> {c : ConstraintList valTy} -> WellFormedTerm (`Elem` context) t => WellFormedTerm (`Elem` context) t' => WellFormedCList (`Elem` context) c => ConstraintListLT {context1 = context, context2 = context} c ((t `eqCon` t') :: c)
 fewerConstraintsImpliesLowerDegree = SndLT $ removeConstraintDecreasesSize t t'
 
-{-
-covering
-walk : Term a -> Substitution a -> Term a
-walk u s = case u of
-  Var u => case lookup u s of
-    Just term => walk term s
-    Nothing => Var u
-  _ => u
+Eq a => Eq (Term a) where
+  Var a == Var b = a == b
+  Val a == Val b = a == b
+  Pair a b == Pair c d = a == c && b == d
+  _ == _ = False
 
-covering
-occurs : Variable -> Term a -> Substitution a -> Bool
-occurs x v s = let v = walk v s in
-  case v of
-    Var v => v == x
-    Pair carV cdrV => occurs x carV s || occurs x cdrV s
-    _ => False
 
 {-
-covering
-extendSubstitution : Variable -> Term a -> Substitution a -> Maybe (Substitution a)
-extendSubstitution x v s = if occurs x v s then Nothing else Just $ insert x v s
-
-covering
-unify : Eq a => Term a -> Term a -> Substitution a -> Maybe (Substitution a)
-unify u v s =
-  let
-    u = walk u s
-    v = walk v s
-  in case (u, v) of
-    (Var u, Var v) => if u == v then Just s else extendSubstitution u (Var v) s
-    (Var u, v) => extendSubstitution u v s
-    (u, Var v) => extendSubstitution v u s
-    (Pair carU cdrU, Pair carV cdrV) => do
-      s <- unify carU carV s
-      unify cdrU cdrV s
-    (Val u, Val v) => if u == v then Just s else Nothing
-    _ => Nothing
-
 export
 callFresh : (Term a -> Goal a) -> Goal a
 callFresh f = \state => let c = state.nextVar in f (Var c) ({ nextVar $= (+ 1) } state)
