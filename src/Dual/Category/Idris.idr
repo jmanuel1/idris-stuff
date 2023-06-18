@@ -2,6 +2,7 @@ module Dual.Category.Idris
 
 import Control.Function
 import Control.Function.FunExt
+import Data.Container
 import Data.List
 import Data.Morphisms
 import Dual.Category
@@ -75,4 +76,11 @@ listFunctor = MkFunctor {
   fmap = \_, _, (Mor f) => Mor (map f),
   identity = \a => cong Mor (funExt mapId),
   composition = \a, b, c, (Mor f), (Mor g) => cong Mor (funExt $ \xs => sym $ mapFusion f g xs)
+}
+
+containerFunctor : FunExt => Functor IdrisCat IdrisCat (Extension c)
+containerFunctor = MkFunctor {
+  fmap = \_, _, (Mor f) => Mor (map f),
+  identity = \a => cong Mor (funExt $ \(MkExtension s p) => Refl),
+  composition = \a, b, c, (Mor f), (Mor g) => cong Mor (funExt $ \(MkExtension s p) => Refl)
 }
