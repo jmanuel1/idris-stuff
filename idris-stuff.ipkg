@@ -18,16 +18,16 @@ modules =
   Dual.Computation,
   Dual.Lang,
   LambdaC,
-  LambdaC.Effect,
-  LambdaC.Test,
+  -- LambdaC.Effect,
+  -- LambdaC.Test,
   MicroKanren,
   MicroKanren.Internal.Types.Term,
   MicroKanren.Internal.Types.Variable,
   MicroKanren.Internal.Control,
   MicroKanren.Internal.Reify,
   MicroKanren.Internal.Types,
-  MicroKanren.Internal,
-  MicroKanren.Examples
+  MicroKanren.Internal
+  -- MicroKanren.Examples
 
 -- main file (i.e. file to load at REPL)
 -- main =
