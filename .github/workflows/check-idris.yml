@@ -14,4 +14,4 @@ jobs:
         run: echo "" | ./pack.sh
       - uses: actions/checkout@v3
       - name: Check idris-stuff Package
-        run: ~/.pack/bin/idris2 --typecheck $GITHUB_WORKSPACE/idris-stuff.ipkg
+        run: ~/.pack/bin/pack typecheck $GITHUB_WORKSPACE/idris-stuff.ipkg
