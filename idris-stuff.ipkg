@@ -26,8 +26,9 @@ modules =
   MicroKanren.Internal.Control,
   MicroKanren.Internal.Reify,
   MicroKanren.Internal.Types,
-  MicroKanren.Internal
-  -- MicroKanren.Examples
+  MicroKanren.Internal,
+  -- MicroKanren.Examples,
+  StackLang.Syntax
 
 -- main file (i.e. file to load at REPL)
 -- main =
