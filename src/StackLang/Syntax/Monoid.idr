@@ -2,6 +2,7 @@ module StackLang.Syntax.Monoid
 
 import Control.Algebra
 import Control.Function.FunExt
+import Control.Relation
 import Data.SnocList
 import Data.SnocList.Quantifiers
 import Dual.Category
@@ -99,6 +100,25 @@ removeStackBottomStackSndSnoc {fxs = (fxs :< fx'){-, gxs = gxs :< gx'-}}  (sx :<
   -- in
   -- rewrite appendAssociative fxs ([<fx'] ++ ([<fx] ++ gxs)) [<gx] in
     ?fgdbfdf_1
+
+-------------------------------------------------------------------------------
+
+data Heq : (0 a : Type) -> (0 p : a -> Type) -> (l : (x : a ** p x)) -> (r : (y : a ** p y)) -> Type where
+  HRefl : Heq a p l l
+
+Symmetric (z : a ** p z) (Heq a p) where
+  symmetric HRefl = HRefl
+
+heqToEq : (0 _ : Heq a p l r) -> l = r
+heqToEq HRefl = Refl
+
+heqRewrite : (0 goal : p y -> Type) -> (0 heq : Heq a p (x ** px) (y ** py)) -> goal py -> goal (case heq of HRefl => px)
+heqRewrite goalfn HRefl goal = goal
+
+heqfromIndexRewrite : (0 p : a -> Type) -> (0 indexEq : y = x) -> (0 px : p x) -> Heq a p (x ** px) (y ** rewrite indexEq in px)
+heqfromIndexRewrite _ Refl px = HRefl
+
+-------------------------------------------------------------------------------
 
 -- appendLinLeftNeutral2 : {0 sx : SnocList a} -> (spx : All p sx) -> rewrite appendLinLeftNeutral sx in (===))[<] ++ spx === spx)
 -- appendLinLeftNeutral2 [<] = Refl
