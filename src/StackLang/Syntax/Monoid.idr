@@ -145,13 +145,14 @@ drop (as :< _) = as
 stackProductCommute : FunExt => {a, b : ?} -> (c : SnocList Type) -> (f : (All Prelude.id c -> All Prelude.id a)) -> (g : (All Prelude.id c -> All Prelude.id b)) -> (f = (\x => stackFst b (f x ++ g x)), g = (\x => stackSnd a (f x ++ g x)))
 stackProductCommute c f g = (funExt $ \x => sym $ stackFstPrf a b (f x) (g x), funExt $ \x => sym $ stackSndPrf a b (f x) (g x))
 
-stackProductUnique : FunExt => (b, a : SnocList Type) -> (f : (Stack c -> Stack (a ++ b))) -> (g : Stack c) -> stackFst {s = a} b (f g) ++ stackSnd {s' = b} a (f g) === f g
-stackProductUnique [<] [<] f g with (f g)
-  _ | [<] = Refl
-stackProductUnique [<] (sx :< x) f g = Refl
-stackProductUnique (sx :< x) [<] f g with (stackFst (sx :< x) (f g)) | (f g)
-  _ | [<] | (fgs :< fg) = let subprf = stackProductUnique sx [<] (drop . f) g in rewrite appendLinLeftNeutral fgs in rewrite appendLinLeftNeutral sx in ?xgfdf
-stackProductUnique (sx :< x) (sy :< y) f g = ?fhfd_3
+stackProductUnique : (b, a : SnocList Type) -> (f : (Stack c -> Stack (a ++ b))) -> (g : Stack c) -> stackFst {s = a} b (f g) ++ stackSnd {s' = b} a (f g) === f g
+stackProductUnique [<] a f c = Refl
+stackProductUnique (sx :< x) a f c with (f c)
+  _ | (fcs :< fc) =
+    let subprf = stackProductUnique sx a (const fcs) c in
+    rewrite fstSnocForget (split a sx fcs) fc in
+    rewrite sndSnocPrf (split a sx fcs) fc in
+    cong (:< fc) subprf
 
 stackCatProduct : FunExt => (a, b : ?) -> Product ? ? StackCat a b
 stackCatProduct a b = MkProduct {
@@ -162,3 +163,4 @@ stackCatProduct a b = MkProduct {
   diagramCommutes = stackProductCommute,
   arrowProductUnique = \c, f => funExt $ \g => stackProductUnique b a f g
 }
+
