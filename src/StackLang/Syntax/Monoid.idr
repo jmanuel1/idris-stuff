@@ -120,9 +120,33 @@ heqfromIndexRewrite _ Refl px = HRefl
 
 -------------------------------------------------------------------------------
 
--- appendLinLeftNeutral2 : {0 sx : SnocList a} -> (spx : All p sx) -> rewrite appendLinLeftNeutral sx in (===))[<] ++ spx === spx)
--- appendLinLeftNeutral2 [<] = Refl
--- appendLinLeftNeutral2 {sx = sx :< x} (spx :< px) = rewrite appendLinLeftNeutral sx in rewrite appendLinLeftNeutral spx in Refl
+-- I'd like to have just `(xs : _) -> All p xs` here, but then Idris struggles
+-- with accepting pattern matching on values of type `Split (xs ++ ys) _`.
+data Split : (0 xs, ys : SnocList a) -> All p (xs ++ ys) -> Type where
+  MkSplit : (0 xs, ys : SnocList a) -> (pxs : All p xs) -> (pys : All p ys) -> Split xs ys (pxs ++ pys)
+
+(:<) : {0 p : a -> Type} -> {pxs : All p (xs ++ ys)} -> {x : a} -> Split xs ys pxs -> (px : p x) -> Split xs (ys :< x) (pxs :< px)
+(MkSplit sx ys psx pys) :< px = MkSplit sx (ys :< x) psx (pys :< px)
+
+split : (0 xs : SnocList a) -> (ys : SnocList a) -> (pxys : All p (xs ++ ys)) -> Split xs ys pxys
+split xs [<] pxys = MkSplit xs [<] pxys [<]
+split xs (sx :< x) (pxys :< pxy) =
+  let recSplit = split xs sx pxys in
+  recSplit :< pxy
+
+fst : {0 a : Type} -> {0 p : a -> Type} -> {0 xs, ys : SnocList a} -> {0 pxys : All p (xs ++ ys)} -> Split xs ys pxys -> All p xs
+fst (MkSplit xs ys pxs pys) = pxs
+
+fstSnocForget : {0 pxys : All p (xs ++ ys)} -> (spl : Split xs ys pxys) -> (px : p x) -> fst (spl :< px) === fst spl
+fstSnocForget (MkSplit xs ys pxs pys) px = Refl
+
+snd : {0 a : Type} -> {0 p : a -> Type} -> {0 xs, ys : SnocList a} -> {0 pxys : All p (xs ++ ys)} -> Split xs ys pxys -> All p ys
+snd (MkSplit xs ys pxs pys) = pys
+
+sndSnocPrf : {0 a : Type} -> {0 p : a -> Type} -> {0 x : a} -> {0 xs, ys : SnocList a} -> {0 pxys : All p (xs ++ ys)} -> (spl : Split xs ys pxys) -> (px : p x) -> snd (spl :< px) === snd spl :< px
+sndSnocPrf (MkSplit xs ys pxs pys) px = Refl
+
+-------------------------------------------------------------------------------
 
 top : Stack (xs :< x) -> x
 top (_ :< a) = a
