@@ -41,10 +41,6 @@ stackCatInitial = MkInitial {
   absurdUnique = \a => \b => funExt $ \case [<x] impossible
 }
 
-stackFst : (s' : ?) -> Stack (s ++ s') -> Stack s
-stackFst [<] stack = stack
-stackFst (s' :< _) (stack :< _) = stackFst s' stack
-
 removeStackBottom : (s : ?) -> Stack ([<a] ++ s) -> Stack s
 removeStackBottom [<] stack = [<]
 removeStackBottom (s :< b) (stack :< y) = removeStackBottom s stack :< y
@@ -55,12 +51,6 @@ removeStackBottomPrf (sx :< y) {gxs = (z :< w)} =
   let subprf = removeStackBottomPrf {fx, gxs = z} sx in
   cong (:< w) subprf
 
-stackSnd : (s : ?) -> {s' : ?} -> Stack (s ++ s') -> Stack s'
-stackSnd [<] stack = rewrite sym $ appendLinLeftNeutral s' in stack
-stackSnd (s :< a) stack =
-  let rec = stackSnd {s' = [<a] ++ s'} s (rewrite appendAssociative s [<a] s' in stack) in
-  removeStackBottom _ rec
-
 appendLinLeftNeutral : {0 sx : SnocList a} -> (spx : All p sx) -> [<] ++ spx === rewrite appendLinLeftNeutral sx in spx
 appendLinLeftNeutral [<] = Refl
 appendLinLeftNeutral {sx = sx :< x} (spx :< px) = rewrite appendLinLeftNeutral sx in rewrite appendLinLeftNeutral spx in Refl
@@ -68,38 +58,6 @@ appendLinLeftNeutral {sx = sx :< x} (spx :< px) = rewrite appendLinLeftNeutral s
 appendAssociative : {0 sx, tx, ux : SnocList a} -> (l : All p sx) -> (c : All p tx) -> (r : All p ux) -> l ++ (c ++ r) === rewrite appendAssociative sx tx ux in (l ++ c) ++ r
 appendAssociative l c [<] = Refl
 appendAssociative {ux = ux :< u} l c (x :< y) = rewrite appendAssociative sx tx ux in rewrite appendAssociative l c x in Refl
-
-stackSndPrf : (sx : ?) -> {ys : ?} -> {0 fxs : Stack sx} -> {0 gxs : Stack ys} -> stackSnd sx (fxs ++ gxs) === gxs
-stackSndPrf [<] {fxs = [<]} = rewrite appendLinLeftNeutral gxs in Refl
-stackSndPrf (sx' :< x) {fxs = (fxs' :< fx)} =
-  let subprf = stackSndPrf {fxs = fxs'} {gxs = [<fx] ++ gxs} sx' in
-  rewrite sym $ appendAssociative fxs' [<fx] gxs in
-  rewrite subprf in
-  removeStackBottomPrf _
-
--- stackTransport : as === bs -> Stack
-
-removeStackBottomStackSndSnoc :
-  {0 fx : a} ->
-  (as : ?) ->
-  (bs : ?) ->
-  {0 fxs : Stack as} ->
-  {0 gxs : Stack bs} ->
-  gxs === removeStackBottom {a} bs (stackSnd as (fxs ++ ([<fx] ++ gxs))) ->
-  ------------------------------
-  gxs :< gx === removeStackBottom {a} (bs :< b) (stackSnd as (fxs ++ ([<fx] ++ (gxs :< gx))))
-removeStackBottomStackSndSnoc [<] bs prf = cong (:< gx) prf
-removeStackBottomStackSndSnoc (sx :< x) [<] {fxs = (fxs :< fx), gxs = [<]} prf =
-  let subprf := removeStackBottomStackSndSnoc {fxs, gxs = [<]} sx [<] prf in
-  ?fgdbfdf_2
-removeStackBottomStackSndSnoc {fxs = (fxs :< fx'){-, gxs = gxs :< gx'-}}  (sx :< x) (bs :< b') prf =
-  -- let
-  --   -- prf' := {-rewrite sym $ stackSndPrf sx in -}rewrite sym $ appendAssociative fxs [<fx'] ([<fx] ++ gxs) in prf
-  --   subprf := removeStackBottomStackSndSnoc {fxs, gxs} sx bs
-  --     ({-rewrite stackSndPrf sx in-} ?dbddf)
-  -- in
-  -- rewrite appendAssociative fxs ([<fx'] ++ ([<fx] ++ gxs)) [<gx] in
-    ?fgdbfdf_1
 
 -------------------------------------------------------------------------------
 
@@ -147,6 +105,36 @@ sndSnocPrf : {0 a : Type} -> {0 p : a -> Type} -> {0 x : a} -> {0 xs, ys : SnocL
 sndSnocPrf (MkSplit xs ys pxs pys) px = Refl
 
 -------------------------------------------------------------------------------
+
+stackFst : (s' : ?) -> Stack (s ++ s') -> Stack s
+stackFst s' stack =
+  fst (split s s' stack)
+
+stackFstPrf : (0 sx : ?) -> (ys : ?) -> (fxs : Stack sx) -> (gxs : Stack ys) -> stackFst ys (fxs ++ gxs) === fxs
+stackFstPrf sx [<] fxs [<] = Refl
+stackFstPrf sx (sy :< x) fxs (y :< z) =
+  rewrite fstSnocForget (split sx sy (fxs ++ y)) z in
+  stackFstPrf sx sy fxs y
+
+stackSnd : (0 s : ?) -> {s' : ?} -> Stack (s ++ s') -> Stack s'
+stackSnd s stack = snd (split s s' stack)
+
+stackSndPrf : (0 sx : ?) -> (ys : ?) -> (fxs : Stack sx) -> (gxs : Stack ys) -> stackSnd sx (fxs ++ gxs) === gxs
+stackSndPrf sx [<] fxs [<] = Refl
+stackSndPrf sx (sy :< x) fxs (y :< z) =
+  let subprf = stackSndPrf sx sy fxs y in
+  rewrite sndSnocPrf (split sx sy (fxs ++ y)) z in
+  cong (:< z) subprf
+
+stackSndSnoc :
+  {0 x : Type} ->
+  (fg : x) ->
+  (0 sy : SnocList Type) ->
+  {0 y : Type} ->
+  {sx : SnocList Type} ->
+  (fgs : Stack (sy ++ sx)) ->
+  stackSnd {s' = sx :< x} sy (fgs :< fg) === stackSnd {s' = sx} sy fgs :< fg
+stackSndSnoc fg sy fgs = sndSnocPrf (split sy sx fgs) fg
 
 top : Stack (xs :< x) -> x
 top (_ :< a) = a
