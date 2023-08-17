@@ -164,3 +164,32 @@ stackCatProduct a b = MkProduct {
   arrowProductUnique = \c, f => funExt $ \g => stackProductUnique b a f g
 }
 
+stackCatExponential : FunExt => (b, a : ?) -> Exponential ? ? StackCat b a
+stackCatExponential b a = MkExponential {
+  exp = [<a *-> b],
+  productARight = \o => stackCatProduct o a,
+  eval = \p => let [<f] : Stack [<a *-> b] = stackFst a p in f (stackSnd _ p),
+  curry = \gamma, f, gammaStack => [< \aStack => f (gammaStack ++ aStack)],
+  diagramCommutes = \gamma, f =>
+    funExt $ \x =>
+      -- Rewriting: fst (split [<(All id a -> All id b)] a ([<(\aStack => f (fst (split gamma a x) ++ aStack))] ++ snd (split gamma a x)))
+      rewrite stackFstPrf [<(All id a -> All id b)] a [<(\aStack => f (fst (split gamma a x) ++ aStack))] (snd (split gamma a x)) in
+      rewrite stackSndPrf [<(All id a -> All id b)] a [<(\aStack => f (fst (split gamma a x) ++ aStack))] (snd (split gamma a x)) in
+      cong (f $) $ stackProductUnique a gamma id x,
+  curryUnique = \gamma, h =>
+    funExt $ \gammaStack =>
+      -- Goal: [<(\aStack => let [<f] = fst (split [<(All id a -> All id b)] a (h (fst (split gamma a (gammaStack ++ aStack))) ++ snd (split gamma a (gammaStack ++ aStack)))) in
+      --         f (stackSnd ?_ (h (fst (split gamma a (gammaStack ++ aStack))) ++ snd (split gamma a (gammaStack ++ aStack)))))]
+      --     = h gammaStack
+      case @@(h gammaStack) of
+        ([<hGammaStack] ** hGammaStackPrf) =>
+          rewrite hGammaStackPrf in
+          cong (Lin :<) $ funExt $ \aStack =>
+            -- Rewriting: fst (split [<(All id a -> All id b)] a (h (fst (split gamma a (gammaStack ++ aStack))) ++ snd (split gamma a (gammaStack ++ aStack))))
+            rewrite stackFstPrf gamma a gammaStack aStack in
+            rewrite hGammaStackPrf in
+            rewrite stackFstPrf [<(All id a -> All id b)] a [<hGammaStack] (snd (split gamma a (gammaStack ++ aStack))) in
+            rewrite stackSndPrf gamma a gammaStack aStack in
+            rewrite stackSndPrf [<(All id a -> All id b)] a [<hGammaStack] aStack in
+            Refl
+}
