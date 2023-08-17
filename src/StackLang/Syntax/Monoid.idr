@@ -143,26 +143,7 @@ drop : Stack (xs :< x) -> Stack xs
 drop (as :< _) = as
 
 stackProductCommute : FunExt => {a, b : ?} -> (c : SnocList Type) -> (f : (All Prelude.id c -> All Prelude.id a)) -> (g : (All Prelude.id c -> All Prelude.id b)) -> (f = (\x => stackFst b (f x ++ g x)), g = (\x => stackSnd a (f x ++ g x)))
-stackProductCommute {b = [<]} c f g =
-  (
-    funExt $ \x => case @@(g x) of ([<] ** prf) => rewrite prf in Refl,
-    funExt $ \x => case @@(g x) of ([<] ** prf) => rewrite prf in Refl
-  )
-stackProductCommute {b = bs :< b} c f g =
-  (
-    funExt $ \x =>
-      case @@(g x) of
-        ((gxs :< gx) ** prf) =>
-          rewrite prf in
-          rewrite fstSnocForget (split a bs (f x ++ gxs)) gx in
-          sym $ stackFstPrf a bs (f x) gxs,
-    funExt $ \x =>
-      case @@(g x) of
-        ((gxs :< gx) ** prf) =>
-          rewrite prf in
-          rewrite sndSnocPrf (split a bs (f x ++ gxs)) gx in
-          cong (:< gx) $ sym $ stackSndPrf a bs (f x) gxs
-  )
+stackProductCommute c f g = (funExt $ \x => sym $ stackFstPrf a b (f x) (g x), funExt $ \x => sym $ stackSndPrf a b (f x) (g x))
 
 stackProductUnique : FunExt => (b, a : SnocList Type) -> (f : (Stack c -> Stack (a ++ b))) -> (g : Stack c) -> stackFst {s = a} b (f g) ++ stackSnd {s' = b} a (f g) === f g
 stackProductUnique [<] [<] f g with (f g)
