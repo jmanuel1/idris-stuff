@@ -143,53 +143,25 @@ drop : Stack (xs :< x) -> Stack xs
 drop (as :< _) = as
 
 stackProductCommute : FunExt => {a, b : ?} -> (c : SnocList Type) -> (f : (All Prelude.id c -> All Prelude.id a)) -> (g : (All Prelude.id c -> All Prelude.id b)) -> (f = (\x => stackFst b (f x ++ g x)), g = (\x => stackSnd a (f x ++ g x)))
-stackProductCommute {a = [<]} {b = [<]} c f g =
+stackProductCommute {b = [<]} c f g =
   (
     funExt $ \x => case @@(g x) of ([<] ** prf) => rewrite prf in Refl,
-    funExt $ \x => case @@(f x) of ([<] ** prf) => rewrite prf in case @@(g x) of ([<] ** prf) => rewrite prf in Refl
-  )
-stackProductCommute {a = as :< a} {b = [<]} c f g =
-  (
-    funExt $ \x => case @@(g x) of
-      ([<] ** prf) => rewrite prf in Refl,
     funExt $ \x => case @@(g x) of ([<] ** prf) => rewrite prf in Refl
   )
-stackProductCommute {a = [<]} {b = bs :< b} c f g =
+stackProductCommute {b = bs :< b} c f g =
   (
     funExt $ \x =>
       case @@(g x) of
-        ((xs :< _) ** prf) =>
+        ((gxs :< gx) ** prf) =>
           rewrite prf in
-          -- NOTE: Easier to typecheck if we get the subproof using the info
-          -- just revealed about `g x`.
-          let subprf := stackProductCommute c f (\x => xs)
-              subprf1 : f x === stackFst bs (f x ++ xs)
-              subprf1 := cong ($ x) (fst subprf) in
-              subprf1,
-    funExt $ \x =>
-      case @@(f x) of
-        ([<] ** prf) =>
-          rewrite prf in
-          -- sym $ appendLinLeftNeutral {sx = bs :< b} ?h4
-          ?h4
-  )
-stackProductCommute {a = as :< a} {b = bs :< b} c f g =
-  (
+          rewrite fstSnocForget (split a bs (f x ++ gxs)) gx in
+          sym $ stackFstPrf a bs (f x) gxs,
     funExt $ \x =>
       case @@(g x) of
-        ((xs :< _) ** prf) =>
+        ((gxs :< gx) ** prf) =>
           rewrite prf in
-          let subprf := stackProductCommute c f (\x => xs) in
-          let subprf1 : f x === stackFst bs (f x ++ xs)
-              subprf1 := cong ($ x) (fst subprf) in
-              subprf1,
-    funExt $ \x =>
-      case (@@(f x), @@(g x)) of
-        (((fxs :< fx) ** fprf), ((gxs :< gx) ** gprf)) =>
-          rewrite fprf in
-          rewrite gprf in
-          let subprf := cong ($ x) $ snd $ stackProductCommute c (\x => fxs :< fx) (\x => gxs) in
-          ?h42
+          rewrite sndSnocPrf (split a bs (f x ++ gxs)) gx in
+          cong (:< gx) $ sym $ stackSndPrf a bs (f x) gxs
   )
 
 stackProductUnique : FunExt => (b, a : SnocList Type) -> (f : (Stack c -> Stack (a ++ b))) -> (g : Stack c) -> stackFst {s = a} b (f g) ++ stackSnd {s' = b} a (f g) === f g
