@@ -17,6 +17,8 @@ https://github.com/ekmett/indexed/blob/331b5dd12eee9dfa89d8bf2dda18dce04030167b/
 -}
 
 ||| Indexed monoid/category for (*->).
+||| There's a function that does nothing to the stack and stack functions
+||| compose in the way you expect.
 StackCat : Category ? (*->)
 StackCat = MkCategory {
   id = \a => id,
@@ -26,6 +28,7 @@ StackCat = MkCategory {
   composeAssociative = \a, b, c, d, f, g, h => Refl
 }
 
+||| There's a function from any stack to the empty stack.
 stackCatFinal : FunExt => Final ? ? StackCat
 stackCatFinal = MkFinal {
   top = [<],
@@ -34,6 +37,8 @@ stackCatFinal = MkFinal {
     ([<] ** prf) => rewrite prf in Refl
 }
 
+||| There's a function that eliminates the stack containing just an impossible
+||| value and "gives" you any stack you want.
 stackCatInitial : FunExt => Initial ? ? StackCat
 stackCatInitial = MkInitial {
   bottom = [<Void],
@@ -154,6 +159,9 @@ stackProductUnique (sx :< x) a f c with (f c)
     rewrite sndSnocPrf (split a sx fcs) fc in
     cong (:< fc) subprf
 
+||| There is a combinator to split the stack at a chosen point into two
+||| different stacks that can be operated on separately. Another combinator
+||| takes two stacks and appends them together.
 stackCatProduct : FunExt => (a, b : ?) -> Product ? ? StackCat a b
 stackCatProduct a b = MkProduct {
   product = a ++ b,
@@ -164,6 +172,9 @@ stackCatProduct a b = MkProduct {
   arrowProductUnique = \c, f => funExt $ \g => stackProductUnique b a f g
 }
 
+||| Quotations can be applied to a value on the stack, much like normal
+||| functions. You can "curry" quotations, that is, absorb a part of the stack
+||| into them. Another way to think about is partial application.
 stackCatExponential : FunExt => (b, a : ?) -> Exponential ? ? StackCat b a
 stackCatExponential b a = MkExponential {
   exp = [<a *-> b],
@@ -192,4 +203,18 @@ stackCatExponential b a = MkExponential {
             rewrite stackSndPrf gamma a gammaStack aStack in
             rewrite stackSndPrf [<(All id a -> All id b)] a [<hGammaStack] aStack in
             Refl
+}
+
+||| Any two stack configurations can be appended together and split apart.
+stackCatCartesian : FunExt => Cartesian ? ? StackCat
+stackCatCartesian = MkCartesian {
+  finiteProduct = stackCatProduct
+}
+
+||| Any two stack configurations can be appended together and split apart. In
+||| addition, any function type between two types of stacks is valid.
+stackCatCartesianClosed : FunExt => CartesianClosed ? ? StackCat
+stackCatCartesianClosed = MkCartesianClosed {
+  cartesian = stackCatCartesian,
+  exponential = stackCatExponential
 }
