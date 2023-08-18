@@ -218,3 +218,21 @@ stackCatCartesianClosed = MkCartesianClosed {
   cartesian = stackCatCartesian,
   exponential = stackCatExponential
 }
+
+stackCatExtend : (xs *-> [<Stack ys]) -> ([<Stack xs] *-> [<Stack ys])
+stackCatExtend f [<s] = f s
+
+||| You can take the entire stack and push it as a single element onto a new,
+||| empty stack. Later, you can extract the original stack from the new one.
+||| These operations form a monad!
+stackCatKleisliTriple : FunExt => KleisliTriple StackCat (\xs => [<Stack xs])
+stackCatKleisliTriple = MkTriple {
+  pure = \a, x => [<x],
+  extend = \_, _ => stackCatExtend,
+  extendPureIsId = \as => funExt $ \[<el] => Refl,
+  pureComposeRight = \x, y, f => Refl,
+  extendCompose = \as, bs, cs, f, g => funExt $ \[<stack] => Refl
+}
+
+stackCatKleisliCat : FunExt => ?
+stackCatKleisliCat = mkKleisliCategory StackCat stackCatKleisliTriple
