@@ -1,5 +1,9 @@
 name: Check Idris Sources
-on: [push]
+on:
+  push:
+    branches:
+      - master
+  pull_request:
 jobs:
   typecheck:
     runs-on: ubuntu-latest
