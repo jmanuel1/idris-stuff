@@ -18,6 +18,7 @@ modules =
   Dual.Computation,
   Dual.Lang,
   LambdaC,
+  LambdaC.FFI,
   -- LambdaC.Effect,
   -- LambdaC.Test,
   MicroKanren,

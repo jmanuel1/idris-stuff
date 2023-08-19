@@ -22,25 +22,6 @@ import System.File.ReadWrite
 %hide Generics.Derive.Eq
 %hide Generics.Derive.Ord
 
-namespace C
-  public export
-  data CType = RawType String | FunType CType CType String | ExternType CType
-
-  export %hint
-  cTypeShow : Show CType
-  cTypeShow = %runElab derive
-
-  %runElab derive "CType" [Generic, Meta, Eq, Ord]
-
-  export
-  FromString CType where
-    fromString = RawType
-
-  getFunctionType : CType -> Maybe CType
-  getFunctionType t@(FunType _ _ _) = Just t
-  getFunctionType (ExternType t) = getFunctionType t
-  getFunctionType _ = Nothing
-
 -- lambda calculus
 
 namespace LC
