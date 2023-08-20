@@ -17,11 +17,11 @@ import LambdaC.FFI
 %default total
 
 public export
-data CompilationStage = Effect | C
+data CompilationStage = Effect | C | ADT
 
--- export
 data DirectlyAbove : Rel CompilationStage where
-  CEffect : DirectlyAbove Effect C
+  EffectADT : DirectlyAbove Effect ADT
+  ADTC : DirectlyAbove ADT C
 
 export
 AtLeast : Rel CompilationStage
@@ -30,6 +30,13 @@ AtLeast = Path DirectlyAbove
 public export
 data Ty : CompilationStage -> Type where
   CTy : CType (Ty stage) -> Ty stage
+  UnitTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
+  VoidTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
+  (:+) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
+  (:*) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
+  -- closure
+  (:->) : {auto 0 _ : stage `AtLeast` ADT} -> List (Ty stage) -> Ty stage -> Ty stage
+  NamedTy : String -> Ty stage
 
 %hint total
 tyShow : Show (Ty stage)
@@ -41,6 +48,7 @@ data Expr : (0 stage : CompilationStage) -> Type
 export
 varRep : CompilationStage -> Type
 varRep Effect = Expr Effect
+varRep ADT = Expr ADT
 varRep C = String
 
 public export
@@ -88,6 +96,7 @@ data Expr : (0 stage : CompilationStage) -> Type where
   (:\) : Ty stage -> (varRep stage -> Expr stage) -> Expr stage
   -- recursion
   Fix : Ty stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage -- fix f = \x => f (fix f) x ==> f : (a -> b) -> (a -> b), fix : ((a -> b) -> (a -> b)) -> (a -> b)
+  TyDecl : Ty stage -> (String -> Expr stage) -> Expr stage
 
 record ContPassingStyleResult m where
   constructor MkContPSResult

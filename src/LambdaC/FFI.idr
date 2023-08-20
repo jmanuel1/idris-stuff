@@ -41,7 +41,6 @@ namespace C
     | (:->*) (List (CType pointedToTy)) (CType pointedToTy)
     | TStruct (List (String, (CType pointedToTy)))
     | TUnion (List (String, (CType pointedToTy)))
-    | TNamed String (CType pointedToTy)
 
   %default partial
   %runElab derive "CType" [Generic, Meta, Eq, Ord, Show]
@@ -53,5 +52,4 @@ namespace C
 
   getFunctionType : CType ptrTy -> Maybe (CType ptrTy)
   getFunctionType t@(_ :->* _) = Just t
-  getFunctionType (TNamed _ t) = getFunctionType t
   getFunctionType _ = Nothing
