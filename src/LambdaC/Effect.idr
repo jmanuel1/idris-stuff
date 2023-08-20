@@ -4,54 +4,90 @@ import Control.Monad.Error.Either
 import Control.Monad.Error.Interface
 import Control.Monad.Identity
 import Control.Monad.State
+import Control.Relation
+import Data.Path
 import Data.SortedMap
 import Deriving.Show
 import LambdaC
+import LambdaC.FFI
 
 %hide Language.Reflection.TTImp.Clause
 
 %language ElabReflection
+%default total
 
-mutual
-  -- op(x) -> e; h
-  public export
-  record Handler where
-    constructor MkHandler
-    op : String  -- op
-    arg : String -- x
-    argType : CType
-    resume : String
-    resumeArgType : CType
-    body : Expr -- e
+public export
+data CompilationStage = Effect | C
 
-  public export
-  data Clause =
-    Return String CType Expr -- return x -> e
-    | OpHandler Handler Clause -- op(x) -> e; h
+-- export
+data DirectlyAbove : Rel CompilationStage where
+  CEffect : DirectlyAbove Effect C
 
-  public export
-  data Expr =
-    App Expr Expr -- e(e)
-    | Val String CType Expr Expr -- val x = e; e
-    | Handle Clause Expr -- handle{h}e
-    -- values
-    | Var String
-    | Extern String CType -- C expression annotated with unchecked C type
-    | Op String CType -- op
-    | Abs String CType Expr -- variable annotated with C type that is not checked, \x. e
-    -- recursion
-    | Fix String Expr CType CType      -- fix f = \x => f (fix f) x ==> f : (a -> b) -> (a -> b), fix : ((a -> b) -> (a -> b)) -> (a -> b)
+export
+AtLeast : Rel CompilationStage
+AtLeast = Path DirectlyAbove
 
-  %hint total
-  handlerShow : Show Handler
-  %hint total
-  clauseShow : Show Clause
-  %hint total
-  exprShow : Show Expr
+public export
+data Ty : CompilationStage -> Type where
+  CTy : CType (Ty stage) -> Ty stage
 
-  handlerShow = %runElab derive {mutualWith = [`{Clause}, `{Expr}]}
-  clauseShow = %runElab derive {mutualWith = [`{Expr}, `{Handler}]}
-  exprShow = %runElab derive {mutualWith = [`{Clause}, `{Handler}]}
+%hint total
+tyShow : Show (Ty stage)
+tyShow = %runElab derive
+
+public export
+data Expr : (0 stage : CompilationStage) -> Type
+
+export
+varRep : CompilationStage -> Type
+varRep Effect = Expr Effect
+varRep C = String
+
+public export
+record ArgumentAndResumption (0 stage : CompilationStage) where {
+  constructor MkArgAndResume
+  {auto 0 stageEv : stage `AtLeast` Effect}
+  arg : varRep stage
+  resume : varRep stage
+}
+
+-- op(x) -> e; h
+public export
+record Handler (0 stage : CompilationStage) where {
+  constructor MkHandler
+  {auto 0 stageEv : stage `AtLeast` Effect}
+  op : String  -- op
+  arg : String -- x
+  argType : Ty stage
+  resumeArgType : Ty stage
+  body : ArgumentAndResumption stage -> Expr stage -- e
+}
+
+public export
+data Clause : (0 stage : CompilationStage) -> {auto 0 stageEv : stage `AtLeast` Effect} -> Type where
+  Return : Ty stage -> (varRep stage -> Expr stage) -> Clause @{stageEv} stage -- return (x: t) -> e
+  OpHandler : Handler stage -> Clause @{stageEv} stage -> Clause @{stageEv} stage -- op(x) -> e; h
+
+public export
+record ExportDecl (0 stage : CompilationStage) where {
+  name : String
+  ty : varRep C
+  expr : Expr stage
+}
+
+data Expr : (0 stage : CompilationStage) -> Type where
+  (:$) : Expr stage -> Expr stage -> Expr stage -- e(e)
+  Val : Expr stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage-- val x = e; e
+  Handle : {auto 0 _ : stage `AtLeast` Effect} -> Clause stage -> Expr stage -> Expr stage -- handle{h}e
+  -- values
+  LocalVar : varRep stage -> Expr stage
+  GlobalVar : String -> Expr stage
+  Extern : String -> varRep C -> Expr stage -- C expression annotated with unchecked C type
+  Export : ExportDecl stage -> Expr stage -> Expr stage
+  Op : {auto 0 _ : stage `AtLeast` Effect} -> String -> Ty stage -> Expr stage -- op
+  (:\) : Ty stage -> (varRep stage -> Expr stage) -> Expr stage
+  -- recursion
+  Fix : Ty stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage -- fix f = \x => f (fix f) x ==> f : (a -> b) -> (a -> b), fix : ((a -> b) -> (a -> b)) -> (a -> b)
 
 record ContPassingStyleResult m where
   constructor MkContPSResult

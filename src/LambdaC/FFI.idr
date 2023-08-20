@@ -37,6 +37,7 @@ namespace C
     | TPtr pointedToTy
     | TAnyPtr
     | TRawType String
+    -- Function pointers.
     | (:->*) (List (CType pointedToTy)) (CType pointedToTy)
     | TStruct (List (String, (CType pointedToTy)))
     | TUnion (List (String, (CType pointedToTy)))
