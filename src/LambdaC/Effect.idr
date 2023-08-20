@@ -7,6 +7,7 @@ import Control.Monad.State
 import Control.Relation
 import Data.Path
 import Data.SortedMap
+import Data.Vect
 import Deriving.Show
 import LambdaC
 import LambdaC.FFI
@@ -32,7 +33,7 @@ data Ty : CompilationStage -> Type where
   CTy : CType (Ty stage) -> Ty stage
   UnitTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
   VoidTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
-  (:+) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
+  (:+) : {auto 0 _ : stage `AtLeast` ADT} -> (String, Ty stage) -> (String, Ty stage) -> Ty stage
   (:*) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
   -- closure
   (:->) : {auto 0 _ : stage `AtLeast` ADT} -> List (Ty stage) -> Ty stage -> Ty stage
@@ -43,7 +44,7 @@ tyShow : Show (Ty stage)
 tyShow = %runElab derive
 
 public export
-data Expr : (0 stage : CompilationStage) -> Type
+data Expr : CompilationStage -> Type
 
 export
 varRep : CompilationStage -> Type
@@ -83,7 +84,7 @@ record ExportDecl (0 stage : CompilationStage) where {
   expr : Expr stage
 }
 
-data Expr : (0 stage : CompilationStage) -> Type where
+data Expr where
   (:$) : Expr stage -> Expr stage -> Expr stage -- e(e)
   Val : Expr stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage-- val x = e; e
   Handle : {auto 0 _ : stage `AtLeast` Effect} -> Clause stage -> Expr stage -> Expr stage -- handle{h}e
@@ -97,6 +98,8 @@ data Expr : (0 stage : CompilationStage) -> Type where
   -- recursion
   Fix : Ty stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage -- fix f = \x => f (fix f) x ==> f : (a -> b) -> (a -> b), fix : ((a -> b) -> (a -> b)) -> (a -> b)
   TyDecl : Ty stage -> (String -> Expr stage) -> Expr stage
+  Constructor : {auto 0 _ : stage `AtLeast` ADT} -> String -> Expr stage
+  Case : {auto 0 _ : stage `AtLeast` ADT} -> Expr stage -> List (n : Nat ** (String, Vect n (Ty stage), Vect n (varRep stage) -> Expr stage)) -> Expr stage
 
 record ContPassingStyleResult m where
   constructor MkContPSResult
