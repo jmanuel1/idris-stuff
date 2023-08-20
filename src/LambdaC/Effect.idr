@@ -32,8 +32,8 @@ public export
 data Ty : CompilationStage -> Type where
   CTy : CType (Ty stage) -> Ty stage
   UnitTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
-  VoidTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
-  (:+) : {auto 0 _ : stage `AtLeast` ADT} -> (String, Ty stage) -> (String, Ty stage) -> Ty stage
+  -- Empty sum is Void
+  SumTy : {auto 0 _ : stage `AtLeast` ADT} -> List (String, Ty stage) -> Ty stage
   (:*) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
   -- closure
   (:->) : {auto 0 _ : stage `AtLeast` ADT} -> List (Ty stage) -> Ty stage -> Ty stage
