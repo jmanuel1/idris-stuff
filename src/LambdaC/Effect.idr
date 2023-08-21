@@ -29,6 +29,13 @@ AtLeast : Rel CompilationStage
 AtLeast = Path DirectlyAbove
 
 public export
+data ResumeKind = Tail
+
+%hint total
+resumeKindShow : Show ResumeKind
+resumeKindShow = %runElab derive
+
+public export
 data Ty : CompilationStage -> Type where
   CTy : CType (Ty stage) -> Ty stage
   UnitTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
@@ -37,6 +44,7 @@ data Ty : CompilationStage -> Type where
   (:*) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
   -- closure
   (:->) : {auto 0 _ : stage `AtLeast` ADT} -> List (Ty stage) -> Ty stage -> Ty stage
+  EffectTy : {auto 0 _ : stage `AtLeast` Effect} -> List (String, Ty stage, ResumeKind) -> Ty stage
   NamedTy : String -> Ty stage
 
 %hint total
@@ -90,7 +98,7 @@ data Expr where
   Handle : {auto 0 _ : stage `AtLeast` Effect} -> Clause stage -> Expr stage -> Expr stage -- handle{h}e
   -- values
   LocalVar : varRep stage -> Expr stage
-  GlobalVar : String -> Expr stage
+  FreeVar : String -> Expr stage
   Extern : String -> varRep C -> Expr stage -- C expression annotated with unchecked C type
   Export : ExportDecl stage -> Expr stage -> Expr stage
   Op : {auto 0 _ : stage `AtLeast` Effect} -> String -> Ty stage -> Expr stage -- op
