@@ -20,6 +20,7 @@ modules =
   LambdaC,
   LambdaC.Effect,
   LambdaC.FFI,
+  LambdaC.Lexer,
   -- LambdaC.Test,
   MicroKanren,
   MicroKanren.Internal.Types.Term,
