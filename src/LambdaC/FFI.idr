@@ -26,13 +26,19 @@ namespace C
 
   %runElab derive "Size" [Generic, Meta, Eq, Ord, Show]
 
+  public export
+  data FloatSize =
+    FSize32 | FSize64
+
+  %runElab derive "FloatSize" [Generic, Meta, Eq, Ord, Show]
+
   infixr 1 :->*
 
   public export
   data CType pointedToTy =
     TInt Signedness Size
     | TChar
-    | TFloat Size
+    | TFloat FloatSize
     | TString
     | TPtr pointedToTy
     | TAnyPtr

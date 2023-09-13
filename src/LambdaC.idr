@@ -24,15 +24,8 @@ import System.File.ReadWrite
 
 -- lambda calculus
 
+{-
 namespace LC
-  public export
-  data LC =
-    Var String
-    | App LC LC
-    | Abs String CType LC -- variable annotated with C type that is not checked
-    | Fix String LC CType CType      -- fix f = \x => f (fix f) x ==> f : (a -> b) -> (a -> b), fix : ((a -> b) -> (a -> b)) -> (a -> b)
-    | Extern String CType -- C expression annotated with unchecked C type
-
   export
   freeVars : LC -> SortedSet String
   freeVars (Var str) = singleton str

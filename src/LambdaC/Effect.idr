@@ -18,15 +18,52 @@ import LambdaC.FFI
 %default total
 
 public export
-data CompilationStage = Effect | C | ADT
+data CompilationStage = Effect | C | ADT | Print
 
-data DirectlyAbove : Rel CompilationStage where
-  EffectADT : DirectlyAbove Effect ADT
-  ADTC : DirectlyAbove ADT C
+-- DirectlyAbove : Rel CompilationStage
+
+-- data DirectlyAbove : Rel CompilationStage where
+--   -- highest so that everything is available
+--   PrintEffect : DirectlyAbove Print Effect
+--   EffectADT : DirectlyAbove Effect ADT
+--   ADTC : DirectlyAbove ADT C
+
+-- QUESTION: Does this break modularity? I should not be able to implement this
+-- from other modules.
+export
+interface DirectlyAbove (0 stage1, stage2 : CompilationStage) where
 
 export
-AtLeast : Rel CompilationStage
-AtLeast = Path DirectlyAbove
+DirectlyAbove Print Effect where
+export
+DirectlyAbove Effect ADT where
+export
+DirectlyAbove ADT C where
+
+-- export
+-- AtLeast : Rel CompilationStage
+-- AtLeast = Path DirectlyAbove
+
+export
+interface AtLeast (0 stage1, stage2 : CompilationStage) where
+
+export
+AtLeast stage stage
+
+export
+DirectlyAbove stage1 stage2 => AtLeast stage2 stage3 => AtLeast stage1 stage3 where
+
+export
+highestStage : CompilationStage
+highestStage = Print
+
+-- %hint
+-- export
+-- printAtLeast : {stage : CompilationStage} -> Print `AtLeast` stage
+-- printAtLeast {stage = Effect} = [PrintEffect]
+-- printAtLeast {stage = C} = [PrintEffect, EffectADT, ADTC]
+-- printAtLeast {stage = ADT} = [PrintEffect, EffectADT]
+-- printAtLeast {stage = Print} = []
 
 public export
 data ResumeKind = Tail
@@ -34,6 +71,9 @@ data ResumeKind = Tail
 %hint total
 resumeKindShow : Show ResumeKind
 resumeKindShow = %runElab derive
+
+infixr 9 :*
+infixr 1 :->
 
 public export
 data Ty : CompilationStage -> Type where
@@ -54,8 +94,9 @@ tyShow = %runElab derive
 public export
 data Expr : CompilationStage -> Type
 
-export
+public export
 varRep : CompilationStage -> Type
+varRep Print = String
 varRep Effect = Expr Effect
 varRep ADT = Expr ADT
 varRep C = String
@@ -67,6 +108,9 @@ record ArgumentAndResumption (0 stage : CompilationStage) where {
   arg : varRep stage
   resume : varRep stage
 }
+
+-- Show (ArgumentAndResumption var stage -> Expr var stage) where
+--   showPrec prec f =
 
 -- op(x) -> e; h
 public export
@@ -81,9 +125,9 @@ record Handler (0 stage : CompilationStage) where {
 }
 
 public export
-data Clause : (0 stage : CompilationStage) -> {auto 0 stageEv : stage `AtLeast` Effect} -> Type where
-  Return : Ty stage -> (varRep stage -> Expr stage) -> Clause @{stageEv} stage -- return (x: t) -> e
-  OpHandler : Handler stage -> Clause @{stageEv} stage -> Clause @{stageEv} stage -- op(x) -> e; h
+data Clause : (0 stage : CompilationStage) -> Type where
+  Return : {auto 0 stageEv : stage `AtLeast` Effect} -> Ty stage -> (varRep stage -> Expr stage) -> Clause stage -- return (x: t) -> e
+  OpHandler : {auto 0 stageEv : stage `AtLeast` Effect} -> Handler stage -> Clause stage -> Clause stage -- op(x) -> e; h
 
 public export
 record ExportDecl (0 stage : CompilationStage) where {
@@ -92,6 +136,9 @@ record ExportDecl (0 stage : CompilationStage) where {
   expr : Expr stage
 }
 
+infixr 0 :$ -- same as `$`
+infixr 0 :\ -- QUESTION: zero?
+
 data Expr where
   (:$) : Expr stage -> Expr stage -> Expr stage -- e(e)
   Val : Expr stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage-- val x = e; e
@@ -99,7 +146,7 @@ data Expr where
   -- values
   LocalVar : varRep stage -> Expr stage
   FreeVar : String -> Expr stage
-  Extern : String -> varRep C -> Expr stage -- C expression annotated with unchecked C type
+  Extern : String -> CType (Ty stage) -> Expr stage -- C expression annotated with unchecked C type
   Export : ExportDecl stage -> Expr stage -> Expr stage
   Op : {auto 0 _ : stage `AtLeast` Effect} -> String -> Ty stage -> Expr stage -- op
   (:\) : Ty stage -> (varRep stage -> Expr stage) -> Expr stage
@@ -109,6 +156,18 @@ data Expr where
   Constructor : {auto 0 _ : stage `AtLeast` ADT} -> String -> Expr stage
   Case : {auto 0 _ : stage `AtLeast` ADT} -> Expr stage -> List (n : Nat ** (String, Vect n (Ty stage), Vect n (varRep stage) -> Expr stage)) -> Expr stage
 
+-- %hint total
+-- handlerShow : Show (Handler stage)
+-- %hint total
+-- clauseShow : {auto 0 _ : stage `AtLeast` Effect} -> Show (Clause stage)
+-- %hint total
+-- exprShow : Show (Expr stage)
+
+-- handlerShow = %runElab derive {mutualWith = [`{Clause}, `{Expr}]}
+-- clauseShow = %runElab derive {mutualWith = [`{Expr}, `{Handler}]}
+-- exprShow = %runElab derive {mutualWith = [`{Clause}, `{Handler}]}
+
+{-
 record ContPassingStyleResult m where
   constructor MkContPSResult
   expr : (Expr -> m Expr) -> m Expr
