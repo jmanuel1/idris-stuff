@@ -13,7 +13,8 @@ package idris-stuff
 depends = contrib, papers
 
 -- modules to install
--- modules =
+modules =
+  Data.Container.Combinators
 
 -- main file (i.e. file to load at REPL)
 -- main =
