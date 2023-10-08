@@ -185,6 +185,7 @@ record Comonad
   extractAfterDuplicateId : (a : object) -> cat.compose (extract (comonad a)) (duplicate a) === cat.id (comonad a)
   fmapExtractAfterDuplicateId : (a : object) -> cat.compose (functor.fmap _ _ (extract a)) (duplicate a) === cat.id (comonad a)
   duplicateAfterDuplicateFmap : (a : object) -> cat.compose (duplicate (comonad a)) (duplicate a) === cat.compose (functor.fmap _ _ (duplicate a)) (duplicate a)
+  extractAfterExtend : (a, b : object) -> (f : comonad a `arrow` b) -> cat.compose (extract b) (cat.compose (functor.fmap (comonad a) b f) (duplicate a)) === f
 
 {- Identity is a comonad. -}
 
@@ -196,5 +197,8 @@ identityComonad cat = MkComonad {
   duplicate = cat.id,
   extractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
   fmapExtractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
-  duplicateAfterDuplicateFmap = \_ => Refl
+  duplicateAfterDuplicateFmap = \_ => Refl,
+  extractAfterExtend = \a, b, f =>
+    rewrite cat.idComposeRight a b f in
+    cat.idComposeLeft a b f
 }
