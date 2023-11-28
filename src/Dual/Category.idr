@@ -173,32 +173,47 @@ identityFunctor = MkFunctor {
   identity = \_ => Refl,
   composition = \_, _, _, _, _ => Refl
 }
-
-public export
-record Comonad
-  (cat : Category object arrow)
-  (comonad : object -> object) where
-  constructor MkComonad
-  functor : Functor cat cat comonad
-  extract : (a : object) -> (comonad a) `arrow` a
-  duplicate : (a : object) -> (comonad a) `arrow` (comonad (comonad a))
-  extractAfterDuplicateId : (a : object) -> cat.compose (extract (comonad a)) (duplicate a) === cat.id (comonad a)
-  fmapExtractAfterDuplicateId : (a : object) -> cat.compose (functor.fmap _ _ (extract a)) (duplicate a) === cat.id (comonad a)
-  duplicateAfterDuplicateFmap : (a : object) -> cat.compose (duplicate (comonad a)) (duplicate a) === cat.compose (functor.fmap _ _ (duplicate a)) (duplicate a)
-  extractAfterExtend : (a, b : object) -> (f : comonad a `arrow` b) -> cat.compose (extract b) (cat.compose (functor.fmap (comonad a) b f) (duplicate a)) === f
+--
+-- public export
+-- record Comonad
+--   (cat : Category object arrow)
+--   (comonad : object -> object) where
+--   constructor MkComonad
+--   functor : Functor cat cat comonad
+--   extract : (a : object) -> (comonad a) `arrow` a
+--   duplicate : (a : object) -> (comonad a) `arrow` (comonad (comonad a))
+--   extractAfterDuplicateId : (a : object) -> cat.compose (extract (comonad a)) (duplicate a) === cat.id (comonad a)
+--   fmapExtractAfterDuplicateId : (a : object) -> cat.compose (functor.fmap _ _ (extract a)) (duplicate a) === cat.id (comonad a)
+--   duplicateAfterDuplicateFmap : (a : object) -> cat.compose (duplicate (comonad a)) (duplicate a) === cat.compose (functor.fmap _ _ (duplicate a)) (duplicate a)
+--   extractAfterExtend : (a, b : object) -> (f : comonad a `arrow` b) -> cat.compose (extract b) (cat.compose (functor.fmap (comonad a) b f) (duplicate a)) === f
 
 {- Identity is a comonad. -}
 
-export
-identityComonad : (cat : Category object arrow) -> Comonad cat Prelude.id
-identityComonad cat = MkComonad {
-  functor = identityFunctor,
-  extract = cat.id,
-  duplicate = cat.id,
-  extractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
-  fmapExtractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
-  duplicateAfterDuplicateFmap = \_ => Refl,
-  extractAfterExtend = \a, b, f =>
-    rewrite cat.idComposeRight a b f in
-    cat.idComposeLeft a b f
-}
+-- export
+-- identityComonad : (cat : Category object arrow) -> Comonad cat Prelude.id
+-- identityComonad cat = MkComonad {
+--   functor = identityFunctor,
+--   extract = cat.id,
+--   duplicate = cat.id,
+--   extractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
+--   fmapExtractAfterDuplicateId = \a => cat.idComposeLeft a a (cat.id a),
+--   duplicateAfterDuplicateFmap = \_ => Refl,
+--   extractAfterExtend = \a, b, f =>
+--     rewrite cat.idComposeRight a b f in
+--     cat.idComposeLeft a b f
+-- }
+--
+-- {- Comonads should produce Kleisli triples in dual categories. -}
+--
+-- comonadToKleisliTripleDual : (cat : Category obj arr) -> (w : obj -> obj) -> Comonad cat w -> KleisliTriple (dual cat) w
+-- comonadToKleisliTripleDual cat w m = MkTriple {
+--   pure = m.extract,
+--   extend = \a, b, f => cat.compose (m.functor.fmap _ _ f) (m.duplicate b),
+--   extendPureIsId = m.fmapExtractAfterDuplicateId,
+--   pureComposeRight = \x, y => m.extractAfterExtend y x,
+--   extendCompose = \x, y, z, f, g =>
+--     -- cat .compose ((m .functor) .fmap (w z) x (cat .compose f (cat .compose ((m .functor) .fmap (w z) y g) (m .duplicate z)))) (m .duplicate z) =
+--     -- cat .compose (cat .compose ((m .functor) .fmap (w y) x f) (m .duplicate y)) (cat .compose ((m .functor) .fmap (w z) y g) (m .duplicate z))
+--
+--     ?h4
+-- }
