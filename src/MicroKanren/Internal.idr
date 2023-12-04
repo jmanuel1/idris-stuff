@@ -324,16 +324,15 @@ unify u v s =
     (ctxt ** wf) = placeCListInContext conList
   in map fst $ unifyExistential (ctxt ** conList ** wf)
 
-{-
 export
 callFresh : (Term a -> Goal a) -> Goal a
 callFresh f = \state => let c = state.nextVar in f (Var c) ({ nextVar $= (+ 1) } state)
 
-export covering
+export
 (===) : Eq a => Term a -> Term a -> Goal a
 u === v = \state => let s = unify u v state.substitution in
   case s of
-    Just s => pure (MkState {substitution = s, nextVar = state.nextVar})
+    Just s => pure ({substitution := s} state)
     Nothing => neutral
 
 export
