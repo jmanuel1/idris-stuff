@@ -2,8 +2,8 @@ module MicroKanren.Internal.Reify
 
 import Data.Colist
 import Data.Fuel
+import Data.List
 import Data.List.Lazy
-import Data.SortedMap
 import Data.Vect
 import MicroKanren.Internal
 import MicroKanren.Internal.Control
@@ -12,6 +12,14 @@ import MicroKanren.Internal.Types
 %hide Prelude.Stream.Stream
 
 %default total
+
+covering
+walk : Term a -> Substitution a -> Term a
+walk u@(Var k) s =
+  case lookup k s of
+    Just t => walk t s
+    Nothing => u
+walk u s = u
 
 covering
 walkRecursively : Term a -> Substitution a -> Term a
