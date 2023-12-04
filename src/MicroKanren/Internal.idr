@@ -123,7 +123,6 @@ decideOccurs a (Pair x y) with (decideOccurs a x) | (decideOccurs a y)
     (OccursSnd z) => f z
 
 ||| Lemma 5
-%hint
 differentVarsInContext : {a1, a2 : Variable} -> (context : VarContext) -> a1 `Elem` context -> Not (a2 === a1) -> (a1 `Elem` (context `remove` a2))
 differentVarsInContext [] _ contra impossible
 differentVarsInContext (x :: xs) a1InContext contra with (decEq x a2) | (a1InContext)
@@ -137,7 +136,6 @@ differentVarsInContext (x :: xs) a1InContext contra with (decEq x a2) | (a1InCon
   _ | (Yes Refl) | Here = void $ contra Refl
 
 ||| Lemma 6
-%hint
 notOccursWellFormed : (t : Term ty) -> {context : VarContext} -> WellFormedTerm (`Elem` context) t => {a : Variable} -> Not (Occurs a t) -> WellFormedTerm (`Elem` (context `remove` a)) t
 notOccursWellFormed (Var i) @{WFVar iInContext} contra = WFVar (differentVarsInContext context iInContext $ \prf => contra $ rewrite sym prf in OccursVar)
 notOccursWellFormed (Val x) contra = WFVal
@@ -210,7 +208,6 @@ removeVarInContextDecreasesLength (x :: xs) a inContext with (decEq x a)
           rewrite removeVarOutsideContextMaintainsLength xs x contra in
           reflexive
 
-%hint
 wellFormedTermMappingAp : {a : Variable} -> {context : VarContext} -> a `Elem` context => WellFormedTerm (`Elem` (context `remove` a)) t => (t1 : Term _) -> {auto wfT1 : WellFormedTerm (`Elem` context) t1} -> WellFormedTerm (`Elem` (context `remove` a)) (mappingAp (a, t) t1)
 wellFormedTermMappingAp (Val x) = %search
 wellFormedTermMappingAp (Var k) with (decEq a k)
@@ -218,12 +215,10 @@ wellFormedTermMappingAp (Var k) with (decEq a k)
   wellFormedTermMappingAp (Var k) | (No contra) = let WFVar kInContext = wfT1 in WFVar $ differentVarsInContext context kInContext contra
 wellFormedTermMappingAp (Pair x y) {wfT1 = WFPair wfX wfY} = WFPair (wellFormedTermMappingAp x) (wellFormedTermMappingAp y)
 
-%hint
 wellFormedCListSubAp : {a : Variable} -> {context : VarContext} -> a `Elem` context => {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} -> (c : ConstraintList _) -> {auto wfC : WellFormedCList (`Elem` context) c} -> WellFormedCList (`Elem` (context `remove` a)) ([(a, t)] `subApConList` c)
 wellFormedCListSubAp [] = []
 wellFormedCListSubAp ((t1, t2) :: y) {wfC = (wfT1, wfT2) :: wfCTail} = (wellFormedTermMappingAp t1, wellFormedTermMappingAp t2) :: wellFormedCListSubAp y
 
-%hint
 wellFormedCListVarConstraintCons : (a : Variable) -> v a => (t : Term _) -> WellFormedTerm v t => (c : ConstraintList _) -> WellFormedCList v c => WellFormedCList v ((Var a `eqCon` t) :: c)
 wellFormedCListVarConstraintCons a t c = (WFVar %search, %search) :: %search
 
@@ -234,7 +229,7 @@ weakenContextMembership (x :: xs) inContext with (decEq x a) | (inContext)
   _ | (No _) | There inXs = There (weakenContextMembership xs inXs)
   _ | (Yes Refl) | _ = There (weakenContextMembership xs inContext)
 
-%hint
+-- NOTE: Marking this %hint contributes noticeably to type checking time.
 weakenContextWFTerm : (context : VarContext) -> {a : Variable} -> WellFormedTerm (`Elem` (context `remove` a)) t -> WellFormedTerm (`Elem` context) t
 weakenContextWFTerm context (WFVar elem) = WFVar (weakenContextMembership context elem)
 weakenContextWFTerm context WFVal = WFVal
@@ -242,7 +237,6 @@ weakenContextWFTerm context (WFPair fst snd) = WFPair (weakenContextWFTerm conte
 
 ||| Lemma 7
 ||| See varctxt_lt_constraints_varl in rodrigogribeiro/unification.
-%hint
 subApDecreasesDegree : {context : VarContext} -> {a : Variable} ->
   {auto aInContext : a `Elem` context} -> {0 valTy : Type} -> {t : Term valTy} ->
   {auto wfT : WellFormedTerm (`Elem` (context `remove` a)) t} ->
@@ -253,15 +247,11 @@ subApDecreasesDegree : {context : VarContext} -> {a : Variable} ->
     @{wellFormedCListVarConstraintCons a @{%search} t @{weakenContextWFTerm context {a} wfT} c} ((Var a `eqCon` t) :: c)
 subApDecreasesDegree _ = FstLT $ removeVarInContextDecreasesLength context a aInContext
 
--- TODO: This type signature makes type checking slower. Maybe because of the
--- impilcit search. Check the %hints.
 ||| Lemma 8
-%hint
 fewerPairsImpliesLowerDegree : {t1, t1', t2, t2' : Term valTy} -> {c : ConstraintList valTy} -> WellFormedTerm (`Elem` context) t1 => WellFormedTerm (`Elem` context) t2 => WellFormedTerm (`Elem` context) t1' => WellFormedTerm (`Elem` context) t2' => WellFormedCList (`Elem` context) c => ConstraintListLT {context1 = context, context2 = context} ((t1 `eqCon` t1') :: (t2 `eqCon` t2') :: c) (((Pair t1 t2) `eqCon` (Pair t1' t2')) :: c)
 fewerPairsImpliesLowerDegree = SndLT $ splitPairConstraintDecreasesSize c
 
 ||| Lemma 9
-%hint
 fewerConstraintsImpliesLowerDegree : {t, t' : Term valTy} -> {c : ConstraintList valTy} -> WellFormedTerm (`Elem` context) t => WellFormedTerm (`Elem` context) t' => WellFormedCList (`Elem` context) c => ConstraintListLT {context1 = context, context2 = context} c ((t `eqCon` t') :: c)
 fewerConstraintsImpliesLowerDegree = SndLT $ removeConstraintDecreasesSize t t'
 
