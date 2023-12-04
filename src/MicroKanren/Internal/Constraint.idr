@@ -36,6 +36,10 @@ data ConstraintList : Type -> Type where
   Nil : ConstraintList a
   (::) : EqualityConstraint a -> ConstraintList a -> ConstraintList a
 
+export
+makeConstraintList : List (EqualityConstraint a) -> ConstraintList a
+makeConstraintList = foldr (::) []
+
 public export
 fvConList : ConstraintList a -> List Variable
 fvConList [] = []
@@ -44,7 +48,7 @@ fvConList (con :: c) = fvConList c `union` fvCon con
 -- Sized impls for EqualityConstraint a is just the impl in Control.WellFounded
 
 ||| Sized impl for List (EqualityConstraint a) in Control.WellFounded is the
-||| length of the list. We want the sume of the sizes of the constraints.
+||| length of the list. We want the sum of the sizes of the constraints.
 public export
 Sized (ConstraintList a) where
   size [] = 0

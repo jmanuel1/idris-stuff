@@ -265,12 +265,74 @@ fewerPairsImpliesLowerDegree = SndLT $ splitPairConstraintDecreasesSize c
 fewerConstraintsImpliesLowerDegree : {t, t' : Term valTy} -> {c : ConstraintList valTy} -> WellFormedTerm (`Elem` context) t => WellFormedTerm (`Elem` context) t' => WellFormedCList (`Elem` context) c => ConstraintListLT {context1 = context, context2 = context} c ((t `eqCon` t') :: c)
 fewerConstraintsImpliesLowerDegree = SndLT $ removeConstraintDecreasesSize t t'
 
+ConstraintListInContext : VarContext -> Type -> Type
+ConstraintListInContext context a = (c : ConstraintList a ** WellFormedCList (`Elem` context) c)
+
+ConstraintListInContextLT : {context1, context2 : VarContext} -> (c1 : ConstraintListInContext context1 a) -> (c2 : ConstraintListInContext context2 a) -> Type
+ConstraintListInContextLT c1 c2 = ConstraintListLT {context1, context2} @{snd c1} @{snd c2} (fst c1) (fst c2)
+
+SubstitutionInContext : VarContext -> Type -> Type
+SubstitutionInContext context a = (s : Substitution a ** WellFormedSub context s)
+
 Eq a => Eq (Term a) where
   Var a == Var b = a == b
   Val a == Val b = a == b
   Pair a b == Pair c d = a == c && b == d
   _ == _ = False
 
+unify' : Eq a => {context1 : VarContext} -> (c1InContext : ConstraintListInContext context1 a) -> ({context2 : VarContext} -> (c2InContext : ConstraintListInContext context2 a) -> ConstraintListInContextLT {context1 = context2, context2 = context1} c2InContext c1InContext -> Maybe (SubstitutionInContext context2 a)) -> Maybe (SubstitutionInContext context1 a)
+unify' ([] ** wfC1) rec = Just ([] ** [])
+unify' (((Var a, Var b) :: c1) ** ((WFVar wfA, WFVar wfB) :: wfC1)) rec with (decEq a b)
+  _ | (No contra) = do
+    let wfBContextRemoveA = differentVarsInContext context1 wfB contra
+    let wfT = WFVar wfBContextRemoveA
+    (s ** wfS) <- rec (subApConList [(a, Var b)] c1 ** wellFormedCListSubAp {context = context1, wfT} c1) (subApDecreasesDegree {wfT} c1)
+    pure $ (subCompose {context = context1} s [(a, Var b)] @{[(wfA, wfT)]} ** ((wfA, wfT) :: wfS))
+  _ | (Yes prf) = rec (c1 ** wfC1) (fewerConstraintsImpliesLowerDegree @{WFVar wfA} @{WFVar wfB})
+unify' (((Var a, t) :: c1) ** ((WFVar wfA, wfT) :: wfC1)) rec with (decideOccurs a t)
+  _ | (No contra) = do
+    let wfT = notOccursWellFormed t contra
+    (s ** wfS) <- rec (subApConList [(a, t)] c1 ** wellFormedCListSubAp {context = context1, wfT} c1) (subApDecreasesDegree {wfT} c1)
+    pure $ (subCompose {context = context1} s [(a, t)] @{[(wfA, wfT)]} ** ((wfA, wfT) :: wfS))
+  _ | (Yes occursPrf) = Nothing
+unify' (((t, Var a) :: c1) ** ((wfT, WFVar wfA) :: wfC1)) rec with (decideOccurs a t)
+  _ | (No contra) = do
+    let wfT = notOccursWellFormed t contra
+    (s ** wfS) <- rec (subApConList [(a, t)] c1 ** wellFormedCListSubAp {context = context1, wfT} c1) (rewrite plusCommutative (size t) 1 in subApDecreasesDegree {wfT} c1)
+    pure $ (subCompose {context = context1} s [(a, t)] @{[(wfA, wfT)]} ** ((wfA, wfT) :: wfS))
+  _ | (Yes occursPrf) = Nothing
+unify' (((Pair t1 t2, Pair t t') :: c1) ** ((WFPair wfT1 wfT2, WFPair wfT wfT') :: wfC1)) rec =
+  rec (((t1 `eqCon` t) :: (t2 `eqCon` t') :: c1) ** %search) fewerPairsImpliesLowerDegree
+unify' (((t, t') :: c1) ** ((wfT, wfT') :: wfC1)) rec =
+  if t == t' then rec (c1 ** wfC1) (fewerConstraintsImpliesLowerDegree @{wfT} @{wfT'}) else Nothing
+
+ConstraintListInExistentialContext : Type -> Type
+ConstraintListInExistentialContext a = (context : VarContext ** ConstraintListInContext context a)
+
+ConstraintListInExistentialContextLT : (c1, c2 : ConstraintListInExistentialContext a) -> Type
+ConstraintListInExistentialContextLT c1 c2 = ConstraintListInContextLT {context1 = fst c1, context2 = fst c2} (snd c1) (snd c2)
+
+0 UnifyP : ConstraintListInExistentialContext a -> Type
+UnifyP c = Maybe (SubstitutionInContext (fst c) a)
+
+unifyExistential' : Eq a => (c1InContext : ConstraintListInExistentialContext a) -> ((c2InContext : ConstraintListInExistentialContext a) -> ConstraintListInExistentialContextLT c2InContext c1InContext -> UnifyP c2InContext) -> UnifyP c1InContext
+unifyExistential' (c1Context ** c1) rec = unify' c1 $ \c2InContext, lt => rec (_ ** c2InContext) lt
+
+accInd' : {0 P : b -> Type} -> (0 f : b -> a) -> ((x : b) -> ((y : b) -> rel (f y) (f x) -> P y) -> P x) -> (z : b) -> (0 _ : Accessible rel (f z)) -> P z
+accInd' f fun z (Access rec) = fun z $ \y, lt => accInd' f fun y (rec (f y) lt)
+
+unifyExistential : Eq a => (c : ConstraintListInExistentialContext a) -> Maybe (SubstitutionInContext (fst c) a)
+unifyExistential c = accInd' (\c => degree @{snd $ snd c} (fst $ snd c)) unifyExistential' c (wellFounded {rel = LexLT LT LT} (degree @{snd $ snd c} (fst $ snd c)))
+
+subToConList : Substitution a -> ConstraintList a
+subToConList = makeConstraintList . map (mapFst Var)
+
+unify : Eq a => Term a -> Term a -> Substitution a -> Maybe (Substitution a)
+unify u v s =
+  let
+    conList = (u `eqCon` v) :: subToConList s
+    (ctxt ** wf) = placeCListInContext conList
+  in map fst $ unifyExistential (ctxt ** conList ** wf)
 
 {-
 export
