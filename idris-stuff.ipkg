@@ -27,7 +27,7 @@ modules =
   MicroKanren.Internal.Reify,
   MicroKanren.Internal.Types,
   MicroKanren.Internal,
-  MicroKanren.Examples
+  MicroKanren.Examples,
   StackLang.Syntax,
   StackLang.Syntax.Monoid
 
