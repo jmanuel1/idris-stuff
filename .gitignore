@@ -6,3 +6,8 @@ build/
 # Idris 1
 *.ibc
 *.o
+
+a.out
+out.c
+test.c
+test
