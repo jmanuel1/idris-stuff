@@ -23,6 +23,8 @@ modules =
   LambdaC.Lexer,
   LambdaC.Parser,
   LambdaC.Resolve,
+  LambdaC.SecondClass,
+  -- LambdaC.Effect,
   -- LambdaC.Test,
   MicroKanren,
   MicroKanren.Internal.Types.Term,
