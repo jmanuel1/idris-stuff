@@ -52,40 +52,6 @@ namespace LC
     else Fix fVar (sub var to body) argType retType
   sub _ _ e@(Extern _ _) = e
 
--- C
-
-namespace C
-  public export
-  record CArg where
-    constructor MkCArg
-    type : CType
-    name : String
-
-  CExp = String
-
-  mutual
-    public export
-    data CStmt = RawStmt String | DeclStmt CDecl
-
-    export
-    FromString CStmt where
-      fromString x = RawStmt x
-
-    public export
-    data CDecl =
-      Fun CType String (List CArg) (List CStmt)
-      | Struct (List CDecl) String
-      | Var CType String (Maybe String)
-      | FunPtr CType String (List CType)
-
-  public export
-  C : Type
-  C = List CDecl
-
-export
-GLOBAL_NAME_PREFIX : String
-GLOBAL_NAME_PREFIX = "lc_"
-
 CompilerState : Type
 CompilerState = (Nat, SortedMap String CType)
 
