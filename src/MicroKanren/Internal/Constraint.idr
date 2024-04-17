@@ -3,9 +3,15 @@ module MicroKanren.Internal.Constraint
 import Control.WellFounded
 import Data.List
 import Data.Nat
+import Frex
+import Frexlet.Monoid.Commutative
+import Frexlet.Monoid.Commutative.Nat
+import Frexlet.Monoid.Commutative.Notation.Core
 import MicroKanren.Internal.Types
 
 %default total
+
+%language ElabReflection
 
 public export
 fv : Term a -> List Variable
@@ -58,59 +64,23 @@ Sized (ConstraintList a) where
 public export
 splitPairConstraintDecreasesSize : {t1, t1', t2, t2' : Term a} -> (c : ConstraintList a) -> Smaller ((t1 `eqCon` t1') :: (t2 `eqCon` t2') :: c) ((Pair t1 t2 `eqCon` Pair t1' t2') :: c)
 splitPairConstraintDecreasesSize [] =
-  -- LTE
-  --  (S (plus (plus (size t1) (size t1')) (plus (size t2) (size t2'))))
-  --  (S (plus (plus (size t1) (size t2)) (S (plus (size t1') (size t2')))))
+  let rewriteRight : (size t1 + size t2) + S (size t1' + size t2') === S (size t2 + size t2') + (size t1 + size t1')
+      rewriteRight = Frex.solve 4 (Monoid.Commutative.Frex Nat.Additive)
+        $ (Dyn 0 .+. Dyn 2) .+. (Sta 1 .+. (Dyn 1 .+. Dyn 3)) =-= Sta 1 .+. ((Dyn 2 .+. Dyn 3) .+. (Dyn 0 .+. Dyn 1)) in
   LTESucc $
-  -- LTE
-  --  (plus (plus (size t2) (size t2')) (plus (size t1) (size t1')))
-  --  (plus (plus (size t1) (size t2)) (S (plus (size t1') (size t2'))))
-  rewrite sym $ plusSuccRightSucc (size t1 + size t2) (size t1' + size t2') in
-  -- LTE
-  --  (plus (plus (size t2) (size t2')) (plus (size t1) (size t1')))
-  --  (S (plus (plus (size t1) (size t2)) (plus (size t1') (size t2'))))
-  rewrite plusCommutative (size t2 + size t2') (size t1 + size t1') in
-  rewrite plusAssociative (size t1 + size t2) (size t1') (size t2') in
-  -- LTE
-  --  (plus (plus (size t1) (size t1')) (plus (size t2) (size t2')))
-  --  (S (plus (plus (plus (size t1) (size t2)) (size t1')) (size t2')))
-  rewrite sym $ plusAssociative (size t1) (size t2) (size t1') in
-  -- LTE
-  --  (plus (plus (size t1) (size t1')) (plus (size t2) (size t2')))
-  --  (S (plus (plus (size t1) (plus (size t2) (size t1'))) (size t2')))
-  rewrite plusCommutative (size t2) (size t1') in
-  -- LTE
-  --  (plus (plus (size t1) (size t1')) (plus (size t2) (size t2')))
-  --  (S (plus (plus (size t1) (plus (size t1') (size t2))) (size t2')))
-  rewrite plusAssociative (size t1) (size t1') (size t2) in
-  rewrite plusAssociative (size t1 + size t1') (size t2) (size t2') in
+  rewrite rewriteRight in
   lteSuccRight reflexive
 splitPairConstraintDecreasesSize (x :: xs) =
-  let xsDecreasesSize = splitPairConstraintDecreasesSize xs in
-  -- LTE
-  --  (S (plus (plus (plus (cListSize xs) (plus (size ?t2) (size ?t2'))) (plus (size ?t1) (size ?t1'))) (size x)))
-  --  (plus (plus (cListSize xs) (S (plus (plus (size ?t1) (size ?t2)) (S (plus (size ?t1') (size ?t2')))))) (size x))
-  let plusSizeX = plusLteMonotoneRight (size x) _ _ xsDecreasesSize in
-  -- LTE
-  --  (S (plus (plus (plus (cListSize xs) (size x)) (plus (size t2) (size t2'))) (plus (size t1) (size t1'))))
-  --  (plus (plus (cListSize xs) (size x)) (S (plus (plus (size t1) (size t2)) (S (plus (size t1') (size t2'))))))
-  rewrite sym $ plusAssociative (size xs) (size x) (size t2 + size t2') in
-  rewrite plusCommutative (size x) (size t2 + size t2') in
-  rewrite plusAssociative (size xs) (size t2 + size t2') (size x) in
-  -- LTE
-  --  (S (plus (plus (plus (cListSize xs) (plus (size t2) (size t2'))) (size x)) (plus (size t1) (size t1'))))
-  --  (plus (plus (cListSize xs) (size x)) (S (plus (plus (size t1) (size t2)) (S (plus (size t1') (size t2'))))))
-  rewrite sym $ plusAssociative (size xs + (size t2 + size t2')) (size x) (size t1 + size t1') in
-  rewrite plusCommutative (size x) (size t1 + size t1') in
-  -- LTE
-  --  (S (plus (plus (cListSize xs) (plus (size t2) (size t2'))) (plus (plus (size t1) (size t1')) (size x))))
-  --  (plus (plus (cListSize xs) (size x)) (S (plus (plus (size t1) (size t2)) (S (plus (size t1') (size t2'))))))
-  rewrite plusAssociative (size xs + (size t2 + size t2')) (size t1 + size t1') (size x) in
-  -- NOTE: Idris 0.6.0-87ebe7d93 doesn't terminate when you remove sym below.
-  rewrite sym $ plusAssociative (size xs) (size x) (S ((size t1 + size t2) + S (size t1' + size t2'))) in
-  rewrite plusCommutative (size x) (S ((size t1 + size t2) + S (size t1' + size t2'))) in
-  rewrite plusAssociative (size xs) (S ((size t1 + size t2) + S (size t1' + size t2'))) (size x) in
-  plusSizeX
+  let xsDecreasesSize = splitPairConstraintDecreasesSize xs
+      plusSizeX = plusLteMonotoneRight (size x) _ _ xsDecreasesSize
+      -- Order of Dyns: x, xs, t1, t1', t2, t2'
+      rewriteLeft : S (((size xs + size x) + (size t2 + size t2')) + (size t1 + size t1')) === S (((size xs + (size t2 + size t2')) + (size t1 + size t1')) + size x)
+      rewriteLeft = Frex.solve 6 (Monoid.Commutative.Frex Nat.Additive)
+        $ Sta 1 .+. (((Dyn 1 .+. Dyn 0) .+. (Dyn 4 .+. Dyn 5)) .+. (Dyn 2 .+. Dyn 3)) =-= Sta 1 .+. (((Dyn 1 .+. (Dyn 4 .+. Dyn 5)) .+. (Dyn 2 .+. Dyn 3)) .+. Dyn 0)
+      rewriteRight : (size xs + size x) + S ((size t1 + size t2) + S (size t1' + size t2')) === (size xs + S ((size t1 + size t2) + S (size t1' + size t2'))) + size x
+      rewriteRight = Frex.solve 6 (Monoid.Commutative.Frex Nat.Additive)
+        $ (Dyn 1 .+. Dyn 0) .+. (Sta 1 .+. ((Dyn 2 .+. Dyn 4) .+. (Sta 1 .+. (Dyn 3 .+. Dyn 5)))) =-= (Dyn 1 .+. (Sta 1 .+. ((Dyn 2 .+. Dyn 4) .+. (Sta 1 .+. (Dyn 3 .+. Dyn 5))))) .+. Dyn 0 in
+  rewrite rewriteLeft in rewrite rewriteRight in plusSizeX
 
 ||| Lemma 2
 public export
