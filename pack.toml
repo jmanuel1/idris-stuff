@@ -1,0 +1,5 @@
+[custom.all.frex]
+type = "github"
+url = "https://github.com/frex-project/idris-frex"
+ipkg = "frex.ipkg"
+commit = "7bffa5ce64782d35a9c80e49bc6ae8026da5fc77"
