@@ -2,6 +2,7 @@ module Data.Variant
 
 import Data.List.Quantifiers
 import Data.Singleton
+import Decidable.Equality.Core
 import Derive.Eq
 import Generics.Derive
 
@@ -170,33 +171,36 @@ namespace AnyWithViews
     ShapeDef = [("Square", Double), ("Circle", Double)]
 
     Shape : Type
+    -- TODO: Leave out the labels???
     Shape = Any Variant ShapeDef
 
-    TyForLabel : Eq labelTy => labelTy -> Row labelTy -> Type
-    TyForLabel l r = fromMaybe Void (lookup l r)
+    TyForLabel : DecEq labelTy => labelTy -> Row labelTy -> Type
+    TyForLabel l [] = Void
+    TyForLabel l ((m, t) :: xs) with (decEq l m)
+      _ | No contra = TyForLabel l xs
+      TyForLabel l ((l, t) :: xs) | Yes Refl = t
 
-    inject : Eq labelTy => {0 label : labelTy} -> {r : ?} -> Variant (label, TyForLabel label r) -> Any Variant r
+    inject : DecEq labelTy => {0 label : labelTy} -> {r : ?} -> Variant (label, TyForLabel label r) -> Any Variant r
     inject {r = []} (_, v) impossible
-    inject {r = ((x, y) :: xs)} (Val label, val) with (label == x)
-      _ | True = Here (Val x, val)
-      _ | False = There $ inject {r = xs} (Val label, val)
+    inject {r = ((x, y) :: xs)} (Val label, val) with (decEq label x)
+      _ | No _ = There $ inject {r = xs} (Val label, val)
+      inject {r = ((label, y) :: xs)} (Val label, val) | Yes Refl = Here (Val label, val)
 
-    -- data MatchView : (r : Row labelTy) -> Any Variant r -> Type where
-    --   Match :
-
-
-    data MatchView : {-{auto eq : Eq labelTy} -> -}(r : Row labelTy) -> Any Variant r -> Type where
-      Match : {auto eq : Eq labelTy} -> (label : labelTy) -> (value : TyForLabel @{eq} label r) -> MatchView {-@{eq}-} r $ inject (Val label, value)
+    data MatchView : {auto eq : DecEq labelTy} -> (r : Row labelTy) -> Any Variant r -> Type where
+      Match : {auto eq : DecEq labelTy} -> (label : labelTy) -> (value : TyForLabel @{eq} label r) -> MatchView @{eq} r $ inject (Val label, value)
 
     -- valPrf : (x : Singleton y) -> x === Val y
     -- valPrf x = ?dfvdfv
-{-
-    matchView : Eq labelTy => {r : Row labelTy} -> (v : Any Variant r) -> MatchView r v
-    matchView @{eq} {r = r@((label, ty) :: xs)} (Here (vlabel, val)) =
-      let m = Match @{eq} {r} label val in ?hgnf_0 --Match ?gngfb ?fbfb -- Need (label == label) to become True
-    matchView (There x) = ?hgnf_1 --Match ?gngfb_0 ?fbfb_0
--}
-    area : Shape -> Double
+
+    -- matchView : DecEq labelTy => {r : Row labelTy} -> (v : Any Variant r) -> MatchView r v
+    -- matchView @{eq} {r = r@((label, ty) :: xs)} (Here (Val label, val)) with (decEq label label)
+    --   _ | Yes Refl =
+    --   -- let m = Match @{eq} {r} label val in
+    --   -- rewrite sym $ decEqSelfIsYes {x = label} in
+    --     Match label ?fgbfdbval --Match ?gngfb ?fbfb -- Need (label == label) to become True
+    --   _ | No contra = contra Refl
+    -- matchView (There x) = ?hgnf_1 --Match ?gngfb_0 ?fbfb_0
+
     -- area shape with
     -- area (Here (Val "Square", side)) = side * side
     -- area (There (Here (Val "Circle", radius))) = 3.14 * radius * radius
@@ -320,3 +324,41 @@ namespace FirstOrderUsingAbsence
     -- Either r must be explicit or these redundant clauses must be here :(
     -- (Square ** dims {-(base, height)-}) => absurd dims --0.5 * base * height
     -- (Circle {-Triangle-} ** dims {-(base, height)-}) => absurd dims --0.5 * base * height
+
+||| Using a final representation (like interfaces) for extensibility.
+|||
+||| I think it would get confusing or noisy when implementing an interface in
+||| terms of another implementation of the same interface. I could use records.
+||| I could also use named implementations so that I don't have to use record
+||| syntax.
+namespace Final
+  interface SquareCircle a where
+    constructor Blah
+    square : Double -> a
+    circle : Double -> a
+
+  export
+  [area]
+  SquareCircle Double where
+    square s = s * s
+    circle r = 3.14 * r * r
+
+  interface TriangleOnly a where
+    triangle : Double -> Double -> a
+
+  export
+  [areaTriangleOnly]
+  TriangleOnly Double where
+    triangle b h = 0.5 * b * h
+
+  export
+  printAreas : SquareCircle Double => TriangleOnly Double => IO ()
+  printAreas = do
+    printLn (the Double $ square 1)
+    printLn (the Double $ circle 1)
+    printLn (the Double $ triangle 1 1)
+
+
+main : IO ()
+main = do
+  printAreas @{area} @{areaTriangleOnly}
