@@ -14,6 +14,7 @@ depends = contrib, elab-util, frex, sop >= 0.6.0
 
 modules =
   Data.SortedMap.Dependent.Inductive,
+  Data.Variant,
   Dual.Category,
   Dual.Computation,
   Dual.Lang,
