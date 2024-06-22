@@ -4,13 +4,17 @@ import Data.List.Quantifiers
 import Data.Singleton
 import Decidable.Equality.Core
 import Derive.Eq
+import Deriving.Functor
+import Deriving.Show
 import Generics.Derive
 
 %language ElabReflection
 
+%hide Data.Vect.Quantifiers.Any.Any
 %hide Generics.Derive.Eq
 %hide Generics.Derive.Ord
-%hide Data.Vect.Quantifiers.Any.Any
+%hide Language.Reflection.Syntax.as
+%hide Language.Reflection.Syntax.rec
 
 %default total
 
@@ -174,6 +178,8 @@ namespace AnyWithViews
     -- TODO: Leave out the labels???
     Shape = Any Variant ShapeDef
 
+    -- I think the later proofs would be easier if I computed the type using an
+    -- interface...
     TyForLabel : DecEq labelTy => labelTy -> Row labelTy -> Type
     TyForLabel l [] = Void
     TyForLabel l ((m, t) :: xs) with (decEq l m)
@@ -358,7 +364,168 @@ namespace Final
     printLn (the Double $ circle 1)
     printLn (the Double $ triangle 1 1)
 
+namespace AnyShow
+  export
+  Show (Any f []) where
+    show x impossible
 
+namespace AnyShowCons
+  export
+  [showAnyCons] Show ((the (x -> Type) f) a) => Show (Any f as) => Show (Any f (a :: as)) where
+    showPrec d (Here x) = showCon d "Here" $ showArg x
+    showPrec d (There x) = showCon d "There" $ showArg x
+
+namespace AnyAsCoproduct
+  interface Area a where
+    area : a -> Double
+
+  data SquareCircle = Square Double | Circle Double
+
+  Area SquareCircle where
+    area (Square dbl) = dbl * dbl
+    area (Circle dbl) = 3.14 * dbl * dbl
+
+  record TriangleOnly where
+    constructor Triangle
+    base : Double
+    height : Double
+
+  Area TriangleOnly where
+    area triangle = 0.5 * triangle.base * triangle.height
+
+  All Area as => Area (Any Prelude.id as) where
+    area @{impl :: _} (Here x) = area x
+    area @{_ :: impl} (There x) = area x
+
+  Cast a (Any Prelude.id (a :: _)) where
+    cast = Here
+
+  Cast a (Any Prelude.id as) => Cast a (Any Prelude.id (_ :: as)) where
+    cast = There . cast
+
+  printArea : Any Prelude.id [SquareCircle, TriangleOnly] -> IO ()
+  printArea shape = printLn $ area shape
+
+  export
+  printAreas : IO ()
+  printAreas = do
+    printArea $ cast $ Square 1
+    (printArea $ cast $ Circle 1)
+    (printArea $ cast $ Triangle 1 1)
+
+  export
+  data Lambda rec = Var String | App rec rec | Lam String rec
+
+  %hint
+  lamFunctor : Functor Lambda
+  lamFunctor = %runElab derive
+
+  export %hint
+  lamShow : Show a => Show (Lambda a)
+  lamShow = %runElab derive
+
+  export
+  data Let rec = MkLet String rec rec
+
+  export %hint
+  letFunctor : Functor Let
+  letFunctor = %runElab derive
+
+  export %hint
+  letShow : Show a => Show (Let a)
+  letShow = %runElab derive
+
+  public export
+  record AnyF (fs : List (Type -> Type)) (a : Type) where
+    constructor MkAnyF
+    any : Any ($ a) fs
+
+  Functor (AnyF []) where
+    map f (MkAnyF x) impossible
+
+  Functor f => Functor (AnyF fs) => Functor (AnyF (f :: fs)) where
+    map f (MkAnyF (Here x)) = MkAnyF $ Here $ map f x
+    map f (MkAnyF (There x)) = MkAnyF $ There $ (map f (MkAnyF x)).any
+
+  -- export
+  -- [showAny] All (Show . f) as => Show (Any f as) where
+  --   showPrec @{impl :: _} d (Here x) = showCon d "Here" $ showArg x
+  --   showPrec @{_ :: impl} d (There x) = showCon d "There" $ showArg x
+
+  export
+  [showAnyF] Show (Any ($ a) fs) => Show (AnyF fs a) where
+    showPrec d x = showCon d "MkAnyF" $ showArg x.any
+
+  injectF : Elem f fs => (f a) -> (AnyF fs a)
+  injectF @{Here} x = MkAnyF (Here x)
+  injectF @{There i} x = MkAnyF (There (injectF x).any)
+
+  Elem f fs => Cast (f a) (AnyF fs a) where
+    cast = injectF
+
+  covering
+  data Fix : (Type -> Type) -> Type where
+    MkFix : f (Fix f) -> Fix f
+
+  export covering
+  [showFix] Show (f (Fix f)) => Show (Fix f) where
+    showPrec d (MkFix x) = showCon d "MkFix" $ show x
+
+  match : All (\x => f x -> a) xs -> Any f xs -> a
+  match (f :: _) (Here x) = f x
+  match (_ :: fs) (There x) = match fs x
+
+  Algebra : (Type -> Type) -> (Type -> Type)
+  Algebra f a = f a -> a
+
+  covering
+  desugarLet' : Algebra (AnyF [Let, Lambda]) (Fix Lambda)
+  desugarLet' = MkFix . match [
+    \(MkLet v e b) => App (MkFix $ Lam v b) e,
+    id
+  ] . .any
+
+  covering
+  cata : Functor f => Algebra f a -> Fix f -> a
+  cata alg (MkFix op) = alg (map (cata alg) op)
+
+  export covering
+  injectFix : Elem f fs => Functor f => Fix f -> Fix (AnyF fs)
+  injectFix = cata (MkFix . injectF)
+
+  covering
+  desugarLet : Fix (AnyF [Let, Lambda]) -> Fix Lambda
+  desugarLet = cata desugarLet'
+
+  export
+  covering
+  example : Fix (AnyF [Let, Lambda])
+  example =
+    let id : Fix (AnyF [Let, Lambda]) := MkFix (injectF $ Lam "x" (MkFix (injectF $ Var "x")))
+        app : Fix (AnyF [Let, Lambda]) := MkFix (injectF $ App (MkFix (injectF $ Var "id")) (MkFix (injectF $ Var "x"))) in
+    MkFix (injectF $ Lam "x" (MkFix (cast $ MkLet "id" id app)))
+
+  covering
+  stringifyExpr : Fix (AnyF [Let, Lambda]) -> String
+  stringifyExpr = cata (match [
+    \(MkLet v e b) => "let \{v} = \{e} in \{b}",
+    \case
+      Lam v b => "\\\{v} => \{b}"
+      App f a => "(\{f})(\{a})"
+      Var v => v
+  ] . .any)
+
+covering
 main : IO ()
 main = do
   printAreas @{area} @{areaTriangleOnly}
+  AnyAsCoproduct.printAreas
+  -- (let
+  --   -- _ : (0 a : Type) -> All (\x => Show (x a)) [Let, Lambda] := \a => All.(::) (the (Show (Let a)) letShow) $ All.(::) (the (Show (Lambda a)) lamShow) $ All.Nil
+  --   _ = letShow @{showFix}
+  --   _ = showAnyCons
+  --   _ = showAnyF
+  --   _ = showFix in
+  --   printLn AnyAsCoproduct.example)
+  putStrLn (stringifyExpr AnyAsCoproduct.example)
+  putStrLn (stringifyExpr (injectFix (desugarLet AnyAsCoproduct.example)))
