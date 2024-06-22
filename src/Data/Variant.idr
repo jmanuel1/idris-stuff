@@ -467,6 +467,14 @@ namespace AnyAsCoproduct
   data Fix : (Type -> Type) -> Type where
     MkFix : f (Fix f) -> Fix f
 
+  -- https://github.com/vmchale/recursion_schemes/blob/master/Data/Functor/Foldable/Instances.idr#L31
+  -- Mu is the least fixed point represented as the catamorphism. I find it
+  -- harder to think about, so I don't think I'll use it. Idris accepts it as
+  -- total though, unlike Fix.
+  total
+  data Mu : (Type -> Type) -> Type where
+    MuF : ({0 a : Type} -> (f a -> a) -> a) -> Mu f
+
   export covering
   [showFix] Show (f (Fix f)) => Show (Fix f) where
     showPrec d (MkFix x) = showCon d "MkFix" $ show x
@@ -489,6 +497,9 @@ namespace AnyAsCoproduct
   cata : Functor f => Algebra f a -> Fix f -> a
   cata alg (MkFix op) = alg (map (cata alg) op)
 
+  cataMu : Functor f => Algebra f a -> Mu f -> a
+  cataMu alg (MuF op) = op alg
+
   export covering
   injectFix : Elem f fs => Functor f => Fix f -> Fix (AnyF fs)
   injectFix = cata (MkFix . injectF)
@@ -505,9 +516,25 @@ namespace AnyAsCoproduct
         app : Fix (AnyF [Let, Lambda]) := MkFix (injectF $ App (MkFix (injectF $ Var "id")) (MkFix (injectF $ Var "x"))) in
     MkFix (injectF $ Lam "x" (MkFix (cast $ MkLet "id" id app)))
 
+  export
+  exampleMu : Mu (AnyF [Let, Lambda])
+  exampleMu =
+    let MuF id : Mu (AnyF [Let, Lambda]) = MuF $ \elim => elim (injectF $ Lam "x" (elim (injectF $ Var "x")))
+        MuF app : Mu (AnyF [Let, Lambda]) = MuF $ \elim => elim (injectF $ App (elim (injectF $ Var "id")) (elim (injectF $ Var "x"))) in
+    MuF $ \elim => elim (injectF $ Lam "x" (elim (injectF $ MkLet "id" (id elim) (app elim))))
+
   covering
   stringifyExpr : Fix (AnyF [Let, Lambda]) -> String
   stringifyExpr = cata (match [
+    \(MkLet v e b) => "let \{v} = \{e} in \{b}",
+    \case
+      Lam v b => "\\\{v} => \{b}"
+      App f a => "(\{f})(\{a})"
+      Var v => v
+  ] . .any)
+
+  stringifyExprMu : Mu (AnyF [Let, Lambda]) -> String
+  stringifyExprMu = cataMu (match [
     \(MkLet v e b) => "let \{v} = \{e} in \{b}",
     \case
       Lam v b => "\\\{v} => \{b}"
@@ -529,3 +556,4 @@ main = do
   --   printLn AnyAsCoproduct.example)
   putStrLn (stringifyExpr AnyAsCoproduct.example)
   putStrLn (stringifyExpr (injectFix (desugarLet AnyAsCoproduct.example)))
+  putStrLn (stringifyExprMu AnyAsCoproduct.exampleMu)
