@@ -10,11 +10,28 @@ package idris-stuff
 -- bugtracker =
 
 -- packages to add to search path
-depends = contrib, papers
+depends = contrib, elab-util, frex, papers, sop
 
--- modules to install
 modules =
-  Data.Container.Combinators
+  Data.Container.Combinators,
+  Data.SortedMap.Dependent.Inductive,
+  Data.Variant,
+  Dual.Category,
+  Dual.Computation,
+  Dual.Lang,
+  LambdaC,
+  -- LambdaC.Effect,
+  -- LambdaC.Test,
+  MicroKanren,
+  MicroKanren.Internal.Types.Term,
+  MicroKanren.Internal.Types.Variable,
+  MicroKanren.Internal.Control,
+  MicroKanren.Internal.Reify,
+  MicroKanren.Internal.Types,
+  MicroKanren.Internal,
+  MicroKanren.Examples,
+  StackLang.Syntax,
+  StackLang.Syntax.Monoid
 
 -- main file (i.e. file to load at REPL)
 -- main =

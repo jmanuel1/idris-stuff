@@ -1,0 +1,14 @@
+name: Check Idris Sources
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    container: ghcr.io/stefan-hoeck/idris2-pack
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check idris-stuff Package
+        run: pack typecheck $GITHUB_WORKSPACE/idris-stuff.ipkg
