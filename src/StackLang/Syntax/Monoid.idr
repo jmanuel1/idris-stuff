@@ -1,6 +1,5 @@
 module StackLang.Syntax.Monoid
 
-import Control.Algebra
 import Control.Function.FunExt
 import Control.Relation
 import Data.SnocList

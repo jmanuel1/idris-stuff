@@ -10,10 +10,11 @@ package idris-stuff
 -- bugtracker =
 
 -- packages to add to search path
-depends = contrib, elab-util, sop
+depends = contrib, elab-util, frex, sop
 
 modules =
   Data.SortedMap.Dependent.Inductive,
+  Data.Variant,
   Dual.Category,
   Dual.Computation,
   Dual.Lang,
@@ -33,7 +34,7 @@ modules =
   MicroKanren.Internal.Reify,
   MicroKanren.Internal.Types,
   MicroKanren.Internal,
-  -- MicroKanren.Examples,
+  MicroKanren.Examples,
   StackLang.Syntax,
   StackLang.Syntax.Monoid
 
