@@ -470,9 +470,6 @@ namespace AnyAsCoproduct
   match (f :: _) (Here x) = f x
   match (_ :: fs) (There x) = match fs x
 
-  Algebra : (Type -> Type) -> (Type -> Type)
-  Algebra f a = f a -> a
-
   covering
   desugarLet' : Algebra (AnyF [Let, Lambda]) (Fix Lambda)
   desugarLet' = MkFix . match [

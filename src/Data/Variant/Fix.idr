@@ -15,3 +15,7 @@ data Mu : (Type -> Type) -> Type where
 export covering
 [showFix] Show (f (Fix f)) => Show (Fix f) where
   showPrec d (MkFix x) = showCon d "MkFix" $ show x
+
+public export
+Algebra : (Type -> Type) -> (Type -> Type)
+Algebra f a = f a -> a
