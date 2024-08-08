@@ -11,3 +11,6 @@ a.out
 out.c
 test.c
 test
+
+# C
+.ccls-cache/
