@@ -13,6 +13,7 @@ package idris-stuff
 depends = contrib, elab-util, frex, sop
 
 modules =
+  Control.Monad.Cont,
   Data.SortedMap.Dependent.Inductive,
   Data.Variant,
   Dual.Category,
