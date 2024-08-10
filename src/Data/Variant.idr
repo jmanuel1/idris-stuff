@@ -477,10 +477,6 @@ namespace AnyAsCoproduct
     id
   ] . .any
 
-  covering
-  cata : Functor f => Algebra f a -> Fix f -> a
-  cata alg (MkFix op) = alg (map (cata alg) op)
-
   cataMu : Functor f => Algebra f a -> Mu f -> a
   cataMu alg (MuF op) = op alg
 

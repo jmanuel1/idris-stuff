@@ -32,6 +32,7 @@ namespace C
 
   %runElab derive "FloatSize" [Generic, Meta, Eq, Ord, Show]
 
+  export
   infixr 1 :->*
 
   public export

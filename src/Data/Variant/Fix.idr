@@ -19,3 +19,7 @@ export covering
 public export
 Algebra : (Type -> Type) -> (Type -> Type)
 Algebra f a = f a -> a
+
+export covering
+cata : Functor f => Algebra f a -> Fix f -> a
+cata alg (MkFix op) = alg (map (cata alg) op)
