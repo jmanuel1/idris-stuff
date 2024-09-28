@@ -1,7 +1,7 @@
 module Data.Variant
 
 import Data.List.Elem
-import Data.List.Quantifiers
+import public Data.List.Quantifiers
 import public Data.Variant.Fix
 
 %default total
@@ -42,6 +42,7 @@ export
 Elem f fs => Cast (f a) (AnyF fs a) where
   cast = injectF
 
+export
 match : All (\x => f x -> a) xs -> Any f xs -> a
 match (f :: _) (Here x) = f x
 match (_ :: fs) (There x) = match fs x
