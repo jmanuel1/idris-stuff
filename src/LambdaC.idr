@@ -13,6 +13,8 @@ import Derive.Eq
 import Derive.Ord
 import Deriving.Show
 import Generics.Derive
+import LambdaC.C
+import LambdaC.FFI
 import System
 import System.File.Handle
 import System.File.ReadWrite
@@ -188,7 +190,7 @@ omegaApp = omega `App` Extern "5" "int"
 main : IO ()
 main = do
   cOmega <-
-    eitherT die pure (evalStateT (the Nat 0, the (SortedMap String CType) empty) $ lcToCProgram omegaApp)
+    eitherT die pure (evalStateT (the Nat 0, the (SortedMap String Ty) empty) $ lcToCProgram omegaApp)
   ignore $ withFile "out.c" WriteTruncate
     (\err => printLn err)
     (\file => map pure $ writeC file cOmega)
