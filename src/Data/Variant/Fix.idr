@@ -1,8 +1,9 @@
 module Data.Variant.Fix
 
 public export covering
-data Fix : (Type -> Type) -> Type where
-  MkFix : f (Fix f) -> Fix f
+record Fix (f : Type -> Type) where
+  constructor MkFix
+  unFix : f (Fix f)
 
 -- https://github.com/vmchale/recursion_schemes/blob/master/Data/Functor/Foldable/Instances.idr#L31
 -- Mu is the least fixed point represented as the catamorphism. I find it

@@ -1,6 +1,6 @@
 module Data.Variant
 
-import Data.List.Elem
+import public Data.List.Elem
 import public Data.List.Quantifiers
 import public Data.Variant.Fix
 
@@ -34,7 +34,7 @@ export
   showPrec d x = showCon d "MkAnyF" $ showArg x.any
 
 export
-injectF : Elem f fs => (f a) -> (AnyF fs a)
+injectF : Elem f fs => f a -> (AnyF fs a)
 injectF @{Here} x = MkAnyF (Here x)
 injectF @{There i} x = MkAnyF (There (injectF x).any)
 
@@ -42,11 +42,29 @@ export
 Elem f fs => Cast (f a) (AnyF fs a) where
   cast = injectF
 
+export covering
+fixInject : Elem f fs => f (Fix (AnyF fs)) -> Fix (AnyF fs)
+fixInject = MkFix . injectF
+
+export covering
+injectFix : Elem f fs => Functor f => Fix f -> Fix (AnyF fs)
+injectFix = cata fixInject
+
+export covering
+Elem f fs => Cast (f (Fix (AnyF fs))) (Fix (AnyF fs)) where
+  cast = fixInject
+
 export
 match : All (\x => f x -> a) xs -> Any f xs -> a
 match (f :: _) (Here x) = f x
 match (_ :: fs) (There x) = match fs x
 
+export
+getAlt : Elem x xs => Any f xs -> Maybe (f x)
+getAlt @{Here} (Here x) = Just x
+getAlt @{There _} (There x) = getAlt x
+getAlt _ = Nothing
+
 export covering
-injectFix : Elem f fs => Functor f => Fix f -> Fix (AnyF fs)
-injectFix = cata (MkFix . injectF)
+getAltLayer : Elem f fs => Fix (AnyF fs) -> Maybe (f (Fix (AnyF fs)))
+getAltLayer = getAlt . .any . .unFix
