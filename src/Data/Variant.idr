@@ -68,3 +68,8 @@ getAlt _ = Nothing
 export covering
 getAltLayer : Elem f fs => Fix (AnyF fs) -> Maybe (f (Fix (AnyF fs)))
 getAltLayer = getAlt . .any . .unFix
+
+public export
+data Subset : List a -> List a -> Type where
+  Nil : Subset [] xs
+  (::) : Elem x xs -> Subset ys xs -> Subset (x :: ys) xs
