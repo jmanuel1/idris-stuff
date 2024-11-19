@@ -1,0 +1,18 @@
+; Compiling Effect Handlers in Capability-Passing Style
+; https://ps.informatik.uni-tuebingen.de/publications/schuster20capability.pdf
+
+(effect flip (-> bool))
+(effect fail (-> void))
+
+(fun (choice n) (-> int {flip, fail} int)
+  (if (< n 1)
+    (fail)
+    (if (flip)
+      n
+      (choice (- n 1)))))
+
+(fun (handledChoice n) (-> int int)
+  (handle
+    [flip (lambda (k) (k (< (rand!) 0.5)))
+      fail (lambda (k) (c-exit! 0))]
+    (choice n)))

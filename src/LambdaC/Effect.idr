@@ -1,3 +1,7 @@
+||| High-level language with effects and handlers, expressed as a DSL.
+||| Gentrification Gone too Far?: Affordable 2nd-Class Values for Fun and (Co-)Effect
+||| https://www.cs.purdue.edu/homes/rompf/papers/osvald-oopsla16.pdf
+
 module LambdaC.Effect
 
 import Control.Monad.Error.Either
@@ -7,6 +11,7 @@ import Control.Monad.State
 import Control.Relation
 import Data.Path
 import Data.SortedMap
+import Data.Variant
 import Data.Vect
 import Deriving.Show
 import LambdaC
@@ -18,316 +23,169 @@ import LambdaC.FFI
 %default total
 
 public export
-data CompilationStage = Effect | C | ADT | Print
-
--- DirectlyAbove : Rel CompilationStage
-
--- data DirectlyAbove : Rel CompilationStage where
---   -- highest so that everything is available
---   PrintEffect : DirectlyAbove Print Effect
---   EffectADT : DirectlyAbove Effect ADT
---   ADTC : DirectlyAbove ADT C
-
--- QUESTION: Does this break modularity? I should not be able to implement this
--- from other modules.
-export
-interface DirectlyAbove (0 stage1, stage2 : CompilationStage) where
-
-export
-DirectlyAbove Print Effect where
-export
-DirectlyAbove Effect ADT where
-export
-DirectlyAbove ADT C where
-
--- export
--- AtLeast : Rel CompilationStage
--- AtLeast = Path DirectlyAbove
-
-export
-interface AtLeast (0 stage1, stage2 : CompilationStage) where
-
-export
-AtLeast stage stage
-
-export
-DirectlyAbove stage1 stage2 => AtLeast stage2 stage3 => AtLeast stage1 stage3 where
-
-export
-highestStage : CompilationStage
-highestStage = Print
-
--- %hint
--- export
--- printAtLeast : {stage : CompilationStage} -> Print `AtLeast` stage
--- printAtLeast {stage = Effect} = [PrintEffect]
--- printAtLeast {stage = C} = [PrintEffect, EffectADT, ADTC]
--- printAtLeast {stage = ADT} = [PrintEffect, EffectADT]
--- printAtLeast {stage = Print} = []
-
-public export
 data ResumeKind = Tail
 
 %hint total
 resumeKindShow : Show ResumeKind
 resumeKindShow = %runElab derive
 
-infixr 9 :*
-infixr 1 :->
+data NameKind = NKType | NKValue
+
+data Context : Type
+
+data Ty : Context -> Type
 
 public export
-data Ty : CompilationStage -> Type where
-  CTy : CType (Ty stage) -> Ty stage
-  UnitTy : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage
+data Context where
+  Lin : Context
+  (:<) : (context : Context) -> (String, Ty context, NameKind) -> Context
+
+public export
+data TyIsNamed : String -> Context -> Type where
+  TyHere : (0 n : String) -> TyIsNamed n (context :< (n, _, NKType))
+  TyThere : TyIsNamed n context -> TyIsNamed n (context :< _)
+
+%builtin Natural TyIsNamed
+
+public export
+data Ty : Context -> Type where
+  CTy : CType (Ty context) -> Ty context
+  UnitTy : Ty _
   -- Empty sum is Void
-  SumTy : {auto 0 _ : stage `AtLeast` ADT} -> List (String, Ty stage) -> Ty stage
-  (:*) : {auto 0 _ : stage `AtLeast` ADT} -> Ty stage -> Ty stage -> Ty stage
+  SumTy : List (String, Ty context) -> Ty context
+  RecordTy : List (String, Ty context) -> Ty context
   -- closure
-  (:->) : {auto 0 _ : stage `AtLeast` ADT} -> List (Ty stage) -> Ty stage -> Ty stage
-  EffectTy : {auto 0 _ : stage `AtLeast` Effect} -> List (String, Ty stage, ResumeKind) -> Ty stage
-  NamedTy : String -> Ty stage
-
-%hint total
-tyShow : Show (Ty stage)
-tyShow = %runElab derive
+  (:->) : List (Ty context) -> Ty context -> Ty context
+  EffectTy : List (String, Ty context, ResumeKind) -> Ty context
+  NamedTy : (0 name : String) -> TyIsNamed name context -> Ty context
+  ComputationTy : List (Ty context) -> Ty context -> Ty context
 
 public export
-data Expr : CompilationStage -> Type
+data Operation : Context -> Type where
+  MkOperation : String -> Ty context -> ResumeKind -> Operation context
+
+||| Effect declaration.
+public export
+data EffectDecl : Context -> Type where
+  EDGeneral : (name : String) -> List (Operation context) -> EffectDecl context
+
+export infixr 1 :->
+
+effectTy : List (Operation context) -> List (String, Ty context, ResumeKind)
+effectTy ops = map (\(MkOperation n t r) => (n, t, r)) ops
 
 public export
-varRep : CompilationStage -> Type
-varRep Print = String
-varRep Effect = Expr Effect
-varRep ADT = Expr ADT
-varRep C = String
+interface Weaken (t : Context -> Type) where
+  total
+  weaken : t c -> t (c :< b)
 
-public export
-record ArgumentAndResumption (0 stage : CompilationStage) where {
-  constructor MkArgAndResume
-  {auto 0 stageEv : stage `AtLeast` Effect}
-  arg : varRep stage
-  resume : varRep stage
-}
-
--- Show (ArgumentAndResumption var stage -> Expr var stage) where
---   showPrec prec f =
-
--- op(x) -> e; h
-public export
-record Handler (0 stage : CompilationStage) where {
-  constructor MkHandler
-  {auto 0 stageEv : stage `AtLeast` Effect}
-  op : String  -- op
-  arg : String -- x
-  argType : Ty stage
-  resumeArgType : Ty stage
-  body : ArgumentAndResumption stage -> Expr stage -- e
-}
-
-public export
-data Clause : (0 stage : CompilationStage) -> Type where
-  Return : {auto 0 stageEv : stage `AtLeast` Effect} -> Ty stage -> (varRep stage -> Expr stage) -> Clause stage -- return (x: t) -> e
-  OpHandler : {auto 0 stageEv : stage `AtLeast` Effect} -> Handler stage -> Clause stage -> Clause stage -- op(x) -> e; h
-
-public export
-record ExportDecl (0 stage : CompilationStage) where {
-  name : String
-  ty : varRep C
-  expr : Expr stage
-}
-
-infixr 0 :$ -- same as `$`
-infixr 0 :\ -- QUESTION: zero?
-
-data Expr where
-  (:$) : Expr stage -> Expr stage -> Expr stage -- e(e)
-  Val : Expr stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage-- val x = e; e
-  Handle : {auto 0 _ : stage `AtLeast` Effect} -> Clause stage -> Expr stage -> Expr stage -- handle{h}e
-  -- values
-  LocalVar : varRep stage -> Expr stage
-  FreeVar : String -> Expr stage
-  Extern : String -> CType (Ty stage) -> Expr stage -- C expression annotated with unchecked C type
-  Export : ExportDecl stage -> Expr stage -> Expr stage
-  Op : {auto 0 _ : stage `AtLeast` Effect} -> String -> Ty stage -> Expr stage -- op
-  (:\) : Ty stage -> (varRep stage -> Expr stage) -> Expr stage
-  -- recursion
-  Fix : Ty stage -> Ty stage -> (varRep stage -> Expr stage) -> Expr stage -- fix f = \x => f (fix f) x ==> f : (a -> b) -> (a -> b), fix : ((a -> b) -> (a -> b)) -> (a -> b)
-  TyDecl : Ty stage -> (String -> Expr stage) -> Expr stage
-  Constructor : {auto 0 _ : stage `AtLeast` ADT} -> String -> Expr stage
-  Case : {auto 0 _ : stage `AtLeast` ADT} -> Expr stage -> List (n : Nat ** (String, Vect n (Ty stage), Vect n (varRep stage) -> Expr stage)) -> Expr stage
-
--- %hint total
--- handlerShow : Show (Handler stage)
--- %hint total
--- clauseShow : {auto 0 _ : stage `AtLeast` Effect} -> Show (Clause stage)
--- %hint total
--- exprShow : Show (Expr stage)
-
--- handlerShow = %runElab derive {mutualWith = [`{Clause}, `{Expr}]}
--- clauseShow = %runElab derive {mutualWith = [`{Expr}, `{Handler}]}
--- exprShow = %runElab derive {mutualWith = [`{Clause}, `{Handler}]}
-
-{-
-record ContPassingStyleResult m where
-  constructor MkContPSResult
-  expr : (Expr -> m Expr) -> m Expr
-  originalType : CType
-
-getReturnArgType : Clause -> CType
-getReturnArgType (Return _ t _) = t
-getReturnArgType (OpHandler _ clause) = getReturnArgType clause
-
-mutual
-  clauseToContPassingStyle : MonadState CompilerState m => MonadError String m => CType -> (Expr -> m Expr) -> Clause -> m (Clause, CType)
-  clauseToContPassingStyle resType k (Return x t e) = do
-    e' <- enterBlock x t $ toContPassingStyle resType e
-    pure (Return x t !(e'.expr k), e'.originalType)
-  clauseToContPassingStyle resType k (OpHandler (MkHandler op x t resume resumeArgType e) clause) = do
-    (clause', retType) <- clauseToContPassingStyle resType k clause
-    e' <- enterBlock x t $ enterBlock resume (FunType resumeArgType retType "") $ toContPassingStyle resType e
-    -- QUESTION: What does this mean for resume?
-    pure (OpHandler (MkHandler op x t resume resumeArgType !(e'.expr k)) clause', retType)
-
-  -- I'm not going to define a handle_l primitive because I'm not going to track the effects
-  -- It's kind of like there's only one big effect with any operations you want
-  -- TODO: generate introduced names to avoid capturing existing names, or do capture-avoidance
-  toContPassingStyle : MonadState CompilerState m => MonadError String m => CType -> Expr -> m (ContPassingStyleResult m)
-  -- CON (constants)
-  toContPassingStyle resType e@(Extern _ t) = pure $ MkContPSResult (\k => k e) t
-  toContPassingStyle resType e@(Op _ t) = pure $ MkContPSResult (\k => k e) t
-  -- VAR (variables)
-  toContPassingStyle resType e@(Var v) = do
-    t <- getCType v
-    pure $ MkContPSResult (\k => k e) t
-  -- VAL
-  toContPassingStyle resType (Val v t e rest) = do
-    e' <- toContPassingStyle t e
-    rest' <- enterBlock v t $ toContPassingStyle resType rest
-    pure $ MkContPSResult
-      (\k => e'.expr (\x => pure $ Val v t x !(rest'.expr k)))
-      rest'.originalType
-  -- HANDLE (handlers)
-  toContPassingStyle resType (Handle clause e) = do
-    let clause' = \k => clauseToContPassingStyle resType k clause
-    let returnArgType = getReturnArgType clause
-    e' <- toContPassingStyle returnArgType e
-    pure $ MkContPSResult
-      (\k => do
-        (clause'', clauseRetType) <- clause' k
-        pure $ Handle clause'' !(e'.expr (\x => pure x)))
-      -- An unfortunate way to get the return type of the clause.
-      (snd !(clause' (\x => pure x)))
-  -- applications
-  toContPassingStyle resType (App e1 e2) = do
-    e2' <- toContPassingStyle resType e2
-    e1' <- toContPassingStyle (FunType e2'.originalType resType "") e1
-    -- TODO: Take type from e1 instead of resType?
-    case e1'.originalType of
-      -- APP
-      ExternType (FunType _ retType _) => pure $ MkContPSResult
-        (\k => e1'.expr (\f => e2'.expr (\x => k (f `App` x))))
-        retType
-      -- APP-CPS
-      FunType _ retType _ => pure $ MkContPSResult
-        (\k => e1'.expr (\f => e2'.expr (\x => do
-          pure $ (f `App` x) `App` Abs "y" retType !(k (Var "y")))))
-        retType
-      _ => throwError "only functions can be applied to arguments"
-  -- LAM-CPS (abstractions)
-  toContPassingStyle resType expr@(Abs x t e) = do
-    (FunType _ eResType envTypeName) <- pure resType
-    | t => throwError $ "resType must be a function type for abstractions: " ++ show t ++ ", type of " ++ show expr
-    e' <- enterBlock x t $ toContPassingStyle eResType e
-    pure $ MkContPSResult
-      (\k => k (Abs x t (Abs "k" (FunType e'.originalType "void" "") !(e'.expr (\x => pure $ Var "k" `App` x)))))
-      (FunType t e'.originalType envTypeName)
-  toContPassingStyle resType (Fix f e argType retType) = do
-    let fixType = FunType argType retType ""
-    e' <- enterBlock f fixType $ toContPassingStyle fixType e
-    let contType = FunType retType "void" ""
-    -- TODO: What if e evaluates to an ExternType?
-    pure $ MkContPSResult
-      (\k => k (Fix f (Abs "x" argType (Abs "k" contType !(e'.expr (\x => pure $ (x `App` Var "x") `App` Var "k")))) argType (FunType contType "void" "")))
-      fixType
+-- Weaken (TyIsNamed n) where
+--   weaken i = TyThere i
 
 export
-toContPassingStyleConcrete : CType -> Expr -> Either String Expr
-toContPassingStyleConcrete resType e = do
-  let runEffects = \a => \m => runIdentity $ runEitherT {e=String} {m=Identity} {a} (evalStateT (Z, the (SortedMap String CType) empty) m)
-  e' <- runEffects (ContPassingStyleResult _) $ toContPassingStyle resType e
-  let exitExtern = Extern "exit(-1)" $ ExternType "void"
-  let exitExternFun = Abs "x" e'.originalType exitExtern
-  runEffects Expr (e'.expr (\x => case e'.originalType of
-    ExternType _ => pure $ exitExternFun `App` x
-    RawType _ => pure $ exitExternFun `App` x
-    _ => pure $ x `App` exitExternFun))
+Weaken Ty where
+  weaken (CTy t) = CTy $ assert_total $ map weaken t
+  weaken UnitTy = UnitTy
+  weaken (SumTy alts) = SumTy (assert_total $ map (mapSnd weaken) alts)
+  weaken (RecordTy alts) = RecordTy (assert_total $ map (mapSnd weaken) alts)
+  weaken (params :-> ret) = assert_total $ map weaken params :-> weaken ret
+  weaken (EffectTy ops) = EffectTy (assert_total $ map (\(n, t, r) => (n, weaken t, r)) ops)
+  weaken (NamedTy n i) = NamedTy n (TyThere i)
+  weaken (ComputationTy effs ty) = ComputationTy (assert_total $ map weaken effs) (weaken ty)
 
-{- Examples -}
+opsExtend : (context : Context) -> List (String, Ty context, ResumeKind) -> Context
+opsExtend c [] = c
+opsExtend c ((n, t, r) :: ops) = opsExtend (c :< (n, t, NKValue)) (assert_smaller ops $ map (mapSnd (mapFst weaken)) ops)
 
-0 example1 : toContPassingStyleConcrete "int" ((Extern "prim_succ" (ExternType $ FunType "int" "int" "struct prim_fun_closure")) `App` ((Extern "prim_pred" (ExternType $ FunType "int" "int" "struct prim_fun_closure")) `App` (Extern "0" $ ExternType "int"))) = Right (App (Abs "x" (RawType "int") (Extern "exit(-1)" (ExternType (RawType "void")))) (App (Extern "prim_succ" (ExternType (FunType (RawType "int") (RawType "int") "struct prim_fun_closure"))) (App (Extern "prim_pred" (ExternType (FunType (RawType "int") (RawType "int") "struct prim_fun_closure"))) (Extern "0" (ExternType (RawType "int"))))))
+export
+opsWeaken : (context : Context) -> (ops : List (String, Ty context, ResumeKind)) -> Ty context -> Ty (opsExtend context ops)
+opsWeaken c [] ty = ty
+opsWeaken c ((n, t, r) :: ops) ty =
+  opsWeaken (c :< (n, t, NKValue)) (assert_smaller ops $ map (mapSnd (mapFst weaken)) ops) (weaken ty)
 
-0 example2 : (toContPassingStyleConcrete (FunType "int" "int" "") $ Handle (OpHandler (MkHandler "get" "unused" "void" "resume" "int" (Abs "s" "int" ((Var "resume" `App` Var "s") `App` Var "s"))) (OpHandler (MkHandler "set" "x" "int" "resume" "void" (Abs "s" "int" ((Var "resume" `App` Extern "void" "void") `App` Var "x"))) (Return "x" "int" (Abs "s" "int" (Var "x"))))) (Val "unused" "void" ((Op "set" (FunType "int" "void" "") `App` Extern "5" "int")) (Op "get" (FunType "void" "int" "") `App` Extern "void" "void"))) === Right (Handle (OpHandler (MkHandler "get" "unused" (RawType "void") "resume" (RawType "int") (App (Abs "s" (RawType "int") (Abs "k" (FunType (RawType "int") (RawType "void") "") (App (App (Var "resume") (Var "s")) (Abs "y" (FunType (RawType "int") (RawType "int") "") (App (App (Var "y") (Var "s")) (Abs "y" (RawType "int") (App (Var "k") (Var "y")))))))) (Abs "x" (FunType (RawType "int") (RawType "int") "") (Extern "exit(-1)" (ExternType (RawType "void")))))) (OpHandler (MkHandler "set" "x" (RawType "int") "resume" (RawType "void") (App (Abs "s" (RawType "int") (Abs "k" (FunType (RawType "int") (RawType "void") "") (App (App (Var "resume") (Extern "void" (RawType "void"))) (Abs "y" (FunType (RawType "int") (RawType "int") "") (App (App (Var "y") (Var "x")) (Abs "y" (RawType "int") (App (Var "k") (Var "y")))))))) (Abs "x" (FunType (RawType "int") (RawType "int") "") (Extern "exit(-1)" (ExternType (RawType "void")))))) (Return "x" (RawType "int") (App (Abs "s" (RawType "int") (Abs "k" (FunType (RawType "int") (RawType "void") "") (App (Var "k") (Var "x")))) (Abs "x" (FunType (RawType "int") (RawType "int") "") (Extern "exit(-1)" (ExternType (RawType "void")))))))) (App (App (Op "set" (FunType (RawType "int") (RawType "void") "")) (Extern "5" (RawType "int"))) (Abs "y" (RawType "void") (Val "unused" (RawType "void") (Var "y") (App (App (Op "get" (FunType (RawType "void") (RawType "int") "")) (Extern "void" (RawType "void"))) (Abs "y" (RawType "int") (Var "y")))))))
+valExtend : (context : Context) -> List (String, Ty context) -> Context
+valExtend c [] = c
+valExtend c ((n, t) :: ops) = valExtend (c :< (n, t, NKValue)) (assert_smaller ops $ map (mapSnd weaken) ops)
 
-0 example3 : (toContPassingStyleConcrete (FunType "int" "int" "") $ Fix "f" (Var "f") "int" "int") === Right (App (Fix "f" (Abs "x" (RawType "int") (Abs "k" (FunType (RawType "int") (RawType "void") "") (App (App (Var "f") (Var "x")) (Var "k")))) (RawType "int") (FunType (FunType (RawType "int") (RawType "void") "") (RawType "void") "")) (Abs "x" (FunType (RawType "int") (RawType "int") "") (Extern "exit(-1)" (ExternType (RawType "void")))))
+export
+valWeaken : (context : Context) -> (bindings : List (String, Ty context)) -> Ty context -> Ty (valExtend context bindings)
+valWeaken context [] ty = ty
+valWeaken c o@((n, t) :: ops) ty = valWeaken (c :< (n, t, NKValue)) (assert_smaller o $ map (mapSnd weaken) ops) (weaken ty)
 
-evidenceVectorVarName : String
-evidenceVectorVarName = "lc_evidence_vector"
+effectExtend : (context : Context) -> EffectDecl context -> Context
+effectExtend ctxt (EDGeneral name ops) =
+  let ty = effectTy ops in
+  opsExtend (ctxt :< (name, EffectTy ty, NKType)) (map (mapSnd (mapFst weaken)) ty)
 
-evidenceVectorVar : Expr
-evidenceVectorVar = Var evidenceVectorVarName
+export
+effectWeaken : (context : Context) -> (eff : EffectDecl context) -> Ty context -> Ty (effectExtend context eff)
+effectWeaken ctxt (EDGeneral name ops) ty =
+  opsWeaken (ctxt :< (name, EffectTy (effectTy ops), NKType)) (map (mapSnd (mapFst weaken)) (effectTy ops)) (weaken ty)
 
-abstractOverEvidenceVector : Expr -> Expr
-abstractOverEvidenceVector e = Abs evidenceVectorVarName "struct lc_evidence_vector" e
+public export
+data Block : (ctxt : Context) -> Ty ctxt -> Type
 
-{-
-https://rust-unofficial.github.io/too-many-lists/infinity-stack-allocated.html
--}
+public export
+record Handler (context : Context) where {
+  constructor MkHandler
+  op : String  -- op
+  args : List (String, Ty context) -- x
+  retTy : Ty (valExtend context args)
+  body : Block (valExtend context args) retTy -- e
+}
 
-consEvidence : Expr -> Expr -> Expr
-consEvidence evidenceHead evidenceTail = (Extern "lc_evidence_vector_cons" (ExternType (FunType "struct lc_evidence_vector" "struct lc_evidence_vector *" "")) `App` evidenceHead) `App` (Extern "LC_ADDRESS_OF" (ExternType (FunType "struct lc_evidence_vector" "struct lc_evidence_vector *" "")) `App` evidenceTail)
+public export
+data Handle : (ctxt : Context) -> Ty ctxt -> Type where
+  HGeneral : (effect : TyIsNamed n context) -> List (Handler context) -> Block context (ComputationTy (eff :: effs) ty) -> Handle context (ComputationTy effs ty)
 
-createReturnEvidence : Expr -> Expr
-createReturnEvidence returnHandlerFun = Extern "lc_evidence_vector_create_return_evidence" (ExternType (FunType "void *" "struct lc_evidence_vector" "")) `App` returnHandlerFun
+export infixr 0 :$ -- same as `$`
+export infixr 0 :\ -- QUESTION: zero?
 
-createOpEvidence : String -> Expr -> Expr
-createOpEvidence op opHandlerFun = (Extern "lc_evidence_vector_create_op_evidence" (ExternType (FunType "const char *" (FunType "void *" "struct lc_evidence_vector" "") "")) `App` op) `App` opHandlerFun
+public export
+data Expr : (ctxt : Context) -> Ty ctxt -> Type where
+  EInt : (sign : Signedness) -> (sz : Size) -> Integer -> Expr _ (CTy (TInt sign sz))
+  EHandle : Handle context ty -> Expr context ty
+  EPure : Expr context ty -> Expr context (ComputationTy [] ty)
+  EInject : Expr context (ComputationTy effs ty) -> Subset effs effs2 -> Expr context (ComputationTy effs2 ty)
+  (:$) : {0 args : _} -> Expr context (args :-> ret) -> All (Expr context) args -> Expr context ret
+  EAddrOf : Expr context ty -> Expr context (CTy (TPtr ty))
 
-mutual
-  extendEvidenceVector : MonadState CompilerState m => MonadError String m => Clause -> Expr -> m (Expr, Expr)
-  extendEvidenceVector (Return x t e) evidence = do
-    e' <- toEvidencePassingStyle e
-    pure $ (consEvidence (createReturnEvidence (Abs x t (e' `App` evidenceVectorVar))) evidence, _)
-  extendEvidenceVector (OpHandler (MkHandler op arg argType resume resumeArgType body) clause) evidence = do
-    body' <- toEvidencePassingStyle body
-    (evidence', t) <- extendEvidenceVector clause evidence
-    pure $ (consEvidence (createOpEvidence op (Abs arg argType (Abs resume (FunType resumeArgType t "") (body' `App` evidenceVectorVar)))) evidence', t)
+public export
+data Def : Context -> Type where
+  DefExtern : (name : String) -> (ty : Ty context) -> (cName : String) -> (cTy : CType (Ty context)) -> Def context
+  DefGeneral : (name : String) -> (ty : Ty context) -> (init : Block context ty) -> Def context
 
-  toEvidencePassingStyle : MonadState CompilerState m => MonadError String m => Expr -> m Expr
-  toEvidencePassingStyle (App x y) = do
-    x' <- toEvidencePassingStyle x
-    y' <- toEvidencePassingStyle y
-    pure $ abstractOverEvidenceVector $ (x' `App` evidenceVectorVar) `App` (y' `App` evidenceVectorVar)
-  toEvidencePassingStyle (Val x t e1 e2) = do
-    e1' <- toEvidencePassingStyle e1
-    e2' <- toEvidencePassingStyle e2
-    pure $ abstractOverEvidenceVector $ Val x t (e1' `App` evidenceVectorVar) (e2' `App` evidenceVectorVar)
-  toEvidencePassingStyle (Handle clause e) = do
-    e' <- toEvidencePassingStyle e
-    pure $ abstractOverEvidenceVector $ Val "lc_new_evidence_vector" "struct lc_evidence_vector" !(extendEvidenceVector clause evidenceVectorVar) (e' `App` Var "lc_new_evidence_vector")
-  toEvidencePassingStyle (Var str) = ?hole_3
-  toEvidencePassingStyle (Extern str x) = ?hole_4
-  toEvidencePassingStyle (Op str x) = ?hole_5
-  toEvidencePassingStyle (Abs str x y) = ?hole_6
-  toEvidencePassingStyle (Fix str x y z) = ?hole_7
+defExtend : (context : Context) -> Def context -> Context
+defExtend ctxt (DefExtern name ty _ _) =
+  ctxt :< (name, ty, NKValue)
+defExtend ctxt (DefGeneral name ty _) =
+  ctxt :< (name, ty, NKValue)
 
--- toCapPassingStyle : Expr -> Expr
--- toCapPassingStyle (App x y) = App (toCapPassingStyle x) (toCapPassingStyle y)
--- toCapPassingStyle (Val v t y z) = Val v t (toCapPassingStyle y) (toCapPassingStyle z)
--- toCapPassingStyle (Handle x y) = ?hole_2
--- toCapPassingStyle (Var str) = ?hole_3
--- toCapPassingStyle (Extern str x) = ?hole_4
--- toCapPassingStyle (Op str x) = ?hole_5
--- toCapPassingStyle (Abs str x y) = ?hole_6
--- toCapPassingStyle (Fix str x y z) = ?hole_7
+export
+defWeaken : (context : Context) -> (def : Def context) -> Ty context -> Ty (defExtend context def)
+defWeaken context (DefExtern name x cName cTy) ty = weaken ty
+defWeaken context (DefGeneral name x init) ty = weaken ty
 
--- desugar : Expr -> LC
+public export
+record Fun (context : Context) where
+  constructor MkFun
+  name : String
+  params : List (String, Ty context)
+  retTy : Ty context
+  body : Block (valExtend context params) (valWeaken context params retTy)
+
+funExtend : (context : Context) -> Fun context -> Context
+funExtend context fun = context :< (fun.name, map snd fun.params :-> fun.retTy, NKValue)
+
+export
+funWeaken : (context : Context) -> (fun : Fun context) -> Ty context -> Ty (funExtend context fun)
+funWeaken context fun ty = weaken ty
+
+public export
+data Block : (ctxt : Context) -> Ty ctxt -> Type where
+  BNil : Block _ UnitTy
+  BEffectDecl : {0 ty : _} -> (eff : EffectDecl context) -> Block (effectExtend context eff) (effectWeaken context eff ty) -> Block context ty
+  BDef : {0 ty : _} -> (def : Def context) -> Block (defExtend context def) (defWeaken context def ty) -> Block context ty
+  BFun : {0 ty : _} -> (fun : Fun context) -> Block (funExtend context fun) (funWeaken context fun ty) -> Block context ty
+  BExpr : {0 ty : _} -> Expr context ty -> Block context ty2 -> Block context ty2
+  BExprRet : {0 ty : _} -> Expr context ty -> Block context ty

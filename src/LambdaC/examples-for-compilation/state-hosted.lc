@@ -1,0 +1,26 @@
+(effect io)
+
+(effect state
+  (get (-> int) tail)
+  (set (-> int ()) tail))
+
+(def putstr (-> str {io} ())
+  (extern putstr (-> str ())))
+
+(def int->str (-> int str)
+  (extern itoa (-> int str)))
+
+(def set! (-> (& int) int ())
+  (extern lc_set_int (-> (& int) int ())))
+
+(def + (-> int int int)
+  (extern lc_add_ints (-> int int int)))
+
+(fun main (-> {io} ())
+  (def store int 0)
+  (handle state
+    [get (lambda () store)
+     set (lambda ((v int)) (set! (& store) v))]
+    (putstr (int->str (get)))
+    (set (+ (get) 5))
+    (putstr (int->str (get)))))
