@@ -13,11 +13,14 @@ import Data.Path
 import Data.SortedMap
 import Data.Variant
 import Data.Vect
+import Derive.Show
 import Deriving.Show
+import Generics.Derive
 import LambdaC
 import LambdaC.FFI
 
 %hide Language.Reflection.TTImp.Clause
+%hide Generics.Derive.Show
 
 %language ElabReflection
 %default total
@@ -28,6 +31,8 @@ data ResumeKind = Tail
 %hint total
 resumeKindShow : Show ResumeKind
 resumeKindShow = %runElab derive
+
+%runElab derive "ResumeKind" [Generic, DecEq]
 
 data NameKind = NKType | NKValue
 
@@ -47,6 +52,8 @@ data TyIsNamed : String -> Context -> Type where
 
 %builtin Natural TyIsNamed
 
+export infixr 1 :->
+
 public export
 data Ty : Context -> Type where
   CTy : CType (Ty context) -> Ty context
@@ -60,6 +67,49 @@ data Ty : Context -> Type where
   NamedTy : (0 name : String) -> TyIsNamed name context -> Ty context
   ComputationTy : List (Ty context) -> Ty context -> Ty context
 
+Injective CTy where
+  injective = ?fgbfg
+
+Injective SumTy where
+  injective = ?fgbfg1
+
+Injective RecordTy where
+  injective = ?fgbfg11
+
+Biinjective (:->) where
+  biinjective = ?fghgdh
+
+Injective EffectTy where
+  injective = ?fgbfg112
+
+Biinjective ComputationTy where
+  biinjective = ?fghgdh3
+
+
+export partial
+DecEq (Ty ctxt) where
+  decEq (CTy x) (CTy y) = decEqCong $ decEq x y
+  decEq UnitTy UnitTy = Yes Refl
+  decEq (SumTy xs) (SumTy ys) = decEqCong $ decEq xs ys
+  decEq (RecordTy xs) (RecordTy ys) = decEqCong $ decEq xs ys
+  decEq (xs :-> x) (ys :-> y) = decEqCong2 (decEq xs ys) (decEq x y)
+  decEq (EffectTy xs) (EffectTy ys) = decEqCong $ decEq xs ys
+  decEq (NamedTy name x) (NamedTy name' y) = ?hgdh --decEqCong2 (decEq name name') (decEq x y)
+  decEq (ComputationTy xs x) (ComputationTy ys y) = decEqCong2 (decEq xs ys) (decEq x y)
+  -- cheating
+  decEq _ _ = No (\_ => assert_total $ idris_crash "impossible")
+
+export
+(ctxt : Context) => Show (Ty ctxt) where
+  showPrec d (CTy x) = assert_total $ showCon d "CTy" $ showArg x
+  showPrec d UnitTy = "UnitTy"
+  showPrec d (SumTy xs) = assert_total $ showCon d "SumTy" $ showArg xs
+  showPrec d (RecordTy xs) = assert_total $ showCon d "RecordTy" $ showArg xs
+  showPrec d (xs :-> x) = ?ghnhfgn_4
+  showPrec d (EffectTy xs) = ?ghnhfgn_5
+  showPrec d (NamedTy name x) = ?ghnhfgn_6
+  showPrec d (ComputationTy xs x) = ?ghnhfgn_7
+
 public export
 data Operation : Context -> Type where
   MkOperation : String -> Ty context -> ResumeKind -> Operation context
@@ -68,8 +118,6 @@ data Operation : Context -> Type where
 public export
 data EffectDecl : Context -> Type where
   EDGeneral : (name : String) -> List (Operation context) -> EffectDecl context
-
-export infixr 1 :->
 
 effectTy : List (Operation context) -> List (String, Ty context, ResumeKind)
 effectTy ops = map (\(MkOperation n t r) => (n, t, r)) ops
@@ -145,7 +193,7 @@ public export
 data Expr : (ctxt : Context) -> Ty ctxt -> Type where
   EInt : (sign : Signedness) -> (sz : Size) -> Integer -> Expr _ (CTy (TInt sign sz))
   EHandle : Handle context ty -> Expr context ty
-  EPure : Expr context ty -> Expr context (ComputationTy [] ty)
+  EPure : Expr context ty -> Expr context (ComputationTy eff ty)
   EInject : Expr context (ComputationTy effs ty) -> Subset effs effs2 -> Expr context (ComputationTy effs2 ty)
   (:$) : {0 args : _} -> Expr context (args :-> ret) -> All (Expr context) args -> Expr context ret
   EAddrOf : Expr context ty -> Expr context (CTy (TPtr ty))

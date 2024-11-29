@@ -42,6 +42,12 @@ nat = terminal "expected a natural number" (\t =>
     TNat n => pure n
     _ => Nothing)
 
+double : Grammar _ Token True Double
+double = terminal "expected a floating-point number" (\t =>
+  case t of
+    TDouble n => pure n
+    _ => Nothing)
+
 parenthesized : {consumes : Bool} -> Grammar s Token consumes a -> Grammar s Token True a
 parenthesized = between (bracket Open Par) (bracket Close Par)
 bracketed : {consumes : Bool} -> Grammar s Token consumes a -> Grammar s Token True a
@@ -52,7 +58,7 @@ braced = between (bracket Open Curly) (bracket Close Curly)
 ||| A sort of "pre-syntax." Notably, this is a first-order named representation.
 ||| Basically, these are s-expressions.
 public export
-data PreSyntax = PSKeyword Keyword | PSID String | PSNat Nat | PSList (Maybe BracketType) (List PreSyntax)
+data PreSyntax = PSKeyword Keyword | PSID String | PSNat Nat | PSList (Maybe BracketType) (List PreSyntax) | PSDouble Double
 
 %runElab derive "PreSyntax" [Generic, Meta, Show]
 
@@ -61,6 +67,7 @@ form = assert_total $ -- TODO
   map PSKeyword anyKeyword <|>
   map PSID identifier <|>
   map PSNat nat <|>
+  map PSDouble double <|>
   map (PSList $ Just Par) (parenthesized (many form)) <|>
   map (PSList $ Just Square) (bracketed (many form)) <|>
   map (PSList $ Just Curly) (braced (many form))
@@ -72,7 +79,7 @@ export
 parse : List (WithBounds Token) -> Either (List1 (ParsingError Token)) PreSyntax
 parse toks = do
   (ps, []) <- parse grammar toks
-  | (_, (tok :: _)) => Left $ pure $ Error "unexpected input remaining" (Just tok.bounds)
+  | (ps, remaining@(tok :: _)) => Left $ (Error "unexpected input remaining: \{show remaining}" (Just tok.bounds)) ::: [Error "parsed so far: \{show ps}" Nothing]
   pure ps
 
 covering
@@ -82,12 +89,6 @@ main = do
   tokens <- case getTokens input of
     Left err => die err
     Right tokens => pure tokens
-  case parse tokens of
+  case parse (withoutComments tokens) of
     Left errs => die (show errs)
     Right preSyntax => printLn preSyntax
-
--- effect : {auto 0 _ : stage `AtLeast` Effect} -> Grammar _ Token _ (Env -> Expr stage) -> Grammar _ Token True (Env -> Expr stage)
--- effect rest = do
---   name <- parenthesized (ignore (keyword KEffect) >> identifier)
---   afterwards <- grammar
---   pure (\env => TyDecl (EffectTy []) (const (afterwards (extendTy name (NamedTy name)))))

@@ -1,5 +1,6 @@
 module LambdaC.FFI
 
+import Decidable.Equality
 import Derive.Eq
 import Derive.Ord
 import Derive.Show
@@ -17,20 +18,20 @@ namespace C
   public export
   data Signedness = Signed | Unsigned
 
-  %runElab derive "Signedness" [Generic, Meta, Eq, Ord, Show]
+  %runElab derive "Signedness" [Generic, Meta, Eq, Ord, Show, DecEq]
 
   public export
   data Size =
     Size8 | Size16 | Size32 | Size64
     | SizeShort | SizeDefault | SizeLong | SizeLongLong
 
-  %runElab derive "Size" [Generic, Meta, Eq, Ord, Show]
+  %runElab derive "Size" [Generic, Meta, Eq, Ord, Show, DecEq]
 
   public export
   data FloatSize =
     FSize32 | FSize64
 
-  %runElab derive "FloatSize" [Generic, Meta, Eq, Ord, Show]
+  %runElab derive "FloatSize" [Generic, Meta, Eq, Ord, Show, DecEq]
 
   export
   infixr 1 :->*
@@ -50,7 +51,7 @@ namespace C
     | TUnion (List (String, (CType pointedToTy)))
 
   %default partial
-  %runElab derive "CType" [Generic, Meta, Eq, Ord, Show]
+  %runElab derive "CType" [Generic, Meta, Eq, Ord, Show, DecEq]
   %default total
 
   public export
