@@ -4,6 +4,7 @@ module Format
 %default total
 
 ||| Dependently typed patterns.
+export
 data DepPat : Type where
   LitP : String -> DepPat
   EolP : DepPat
