@@ -171,17 +171,20 @@ lcfToAnf = flip runCont (MkFix . Halt) . evalStateT (0, neutral) . cata lcfToAnf
 -- anffToCExp _ = ?fddbd
 
 -- Closure conversion
+
+data ClosedF rec = ClosedAbs String Ty String Ty rec
+
 ||| Close all abstractions. (Convert free vars to explicit environments.)
-close : MonadFresh m => MonadState (SortedMap String Ty) => MonadWriter CDecl m => Algebra LCF (m (Fix (AnyF [LCF, ClosedF])))
-closeAnf (Var v) = pure $ MkFix $ injectF $ Var v
-closeAnf (Abs x t b) = do
+close : MonadFresh m => MonadState (SortedMap String Ty) m => MonadWriter CDecl m => Algebra LCF (m (Fix (AnyF [LCF, ClosedF])))
+close (Var v) = pure $ MkFix $ injectF $ Var v
+close (Abs x t b) = do
   b <- b
   let free = delete x (freeVars b)
   envName <- genName "close_anf_env"
   envType <- envType free
   let body = grabFreeVarsFromEnv envName free b
   pure $ MkFix $ injectF $ ClosedAbs x t envName envType body
-closeAnf (Halt (Fix f b s t)) = do
+close (Halt (Fix f b s t)) = do
   b <- b
   let free = delete x (freeVars b)
   envName <- genName "close_anf_env"
