@@ -1,15 +1,30 @@
 module LambdaC.SecondClass
 
-import Control.Monad.State
 import Control.Monad.Error.Either
 import Control.Monad.Error.Interface
+import Control.Monad.State
+import Control.Monad.Reader
+import Data.Either
 import Data.Fin
+import Data.List
 import Data.SortedMap
+import Data.SortedSet
+import Data.Variant
+import Derive.Eq
+import Derive.Ord
+import Derive.Show
+import Generics.Derive
 import LambdaC.C
-import LambdaC.Effect
 import LambdaC.FFI
 
-%default total
+%default covering
+
+%language ElabReflection
+
+%hide Generics.Derive.Eq
+%hide Generics.Derive.Ord
+%hide Generics.Derive.Show
+%hide Language.Reflection.Syntax.rec
 
 namespace Class
   public export
@@ -19,6 +34,8 @@ namespace Class
   fromInteger : (n : Integer) -> {auto prf : Either (n === 1) (n === 2)} -> Annotation
   fromInteger .(_) {prf = Left Refl} = First
   fromInteger .(_) {prf = Right Refl} = Second
+
+  %runElab derive "Annotation" [Generic, Meta, Eq, Ord, Show]
 
 namespace ExpTy
   public export
@@ -32,47 +49,47 @@ namespace ExpTy
   data ExpTy =
     NoReturn -- bottom
     | ValTy ValTy
+    | CTy (CType ExpTy)
 
-data Term : Type where
+data TermF : Type -> Type where
   -- constants
-  Extern : String -> CType ExpTy -> Term
-  Var : String -> Annotation -> Term
-  Lam : String -> Annotation -> Term -> Term
-  App : Term -> Term -> Term
-  Pair : Term -> Annotation -> Annotation -> Term -> Term
-  Fst : Term -> Term
-  Snd : Term -> Term
-  If : Term -> Term -> Term -> Term
-  Let : String -> Annotation -> Term -> Term -> Term
+  Extern : String -> CType ExpTy -> TermF rec
+  Boolean : Bool -> TermF rec
+
+  Var : String -> Annotation -> TermF rec
+  Lam : String -> Annotation -> ValTy -> rec -> TermF rec
+  App : rec -> rec -> TermF rec
+  Pair : rec -> Annotation -> Annotation -> rec -> TermF rec
+  Fst : rec -> TermF rec
+  Snd : rec -> TermF rec
+  If : rec -> rec -> rec -> TermF rec
+  Let : String -> Annotation -> rec -> rec -> TermF rec
   -- the control operator C
-  Control : Term -> Term
+  Control : rec -> TermF rec
 
-isValue : Term -> Bool
-isValue (Extern str x) = True
-isValue (Var str x) = True
-isValue (Lam str x y) = True
-isValue (Pair x y z w) = isValue x && isValue w
-isValue _ = False
+data RuntimeValueF : Type -> Type where
+  Closure : String -> rec -> List (String, rec) -> RuntimeValueF rec
 
--- ||| E[_]
--- findEvalCtxt : Term -> (Term, Term -> Term)
--- findEvalCtxt (App x y) =
---   if isValue x then
---     let (redex, e) = findEvalCtxt y in (redex, \res => App x (e res))
---   else let (redex, e) = findEvalCtxt x in (redex, \res => App (e res) y)
--- findEvalCtxt (Pair x y z w) =
---   if isValue x then
---     let (redex, e) = findEvalCtxt w in (redex, \res => Pair x y z (e res))
---   else let (redex, e) = findEvalCtxt x in (redex, \res => Pair (e res) y z w)
--- findEvalCtxt (Fst x) = mapSnd (Fst .) (findEvalCtxt x)
--- findEvalCtxt (Snd x) = ?h1_6
--- findEvalCtxt (If x y z) = ?h1_7
--- findEvalCtxt (Let str x y z) = ?h1_8
--- findEvalCtxt (Control x) = ?h1_9
--- findEvalCtxt t = (t, id)
+Term : Type
+Term = Fix TermF
+
+RuntimeSyntax : Type
+RuntimeSyntax = Fix (AnyF [TermF, RuntimeValueF])
+
+isValue : RuntimeSyntax -> Bool
+isValue = match [isTermValue, const True] . .any . .unFix
+  where
+    isTermValue : TermF RuntimeSyntax -> Bool
+    isTermValue (Extern str x) = True
+    isTermValue (Lam _ _ _ _) = True
+    isTermValue (Pair x y z w) = isValue x && isValue w
+    isTermValue _ = False
+
+Stack : Type
+Stack = List (Either (RuntimeSyntax -> RuntimeSyntax) (String, RuntimeSyntax))
 
 Configuration : Type
-Configuration = (Term, List (Term -> Term))
+Configuration = (RuntimeSyntax, Stack)
 
 record CompilerCtxt where
   genNameCounter : Nat
@@ -90,137 +107,169 @@ genName root = do
   incrementCounter
   suffix <- map (cast . .genNameCounter) get
   let name = GLOBAL_NAME_PREFIX ++ root ++ "_" ++ suffix
-  if contains name (!get).usedNames then
-    genName root
-  else do
-    markNameUsed name
-    pure name
+  if contains name (!get).usedNames
+    then genName root
+    else do
+      markNameUsed name
+      pure name
 
-
--- getVar : MonadState EvalCtxt m => String -> m (Maybe Term)
--- getVar name = map (lookup name . .env) get
-
+private
 infix 6 `containsFree`
-containsFree : Term -> String -> Bool
-containsFree (Extern str x) name = False
-containsFree (Var str x) name = str == name
-containsFree (Lam str x y) name = str /= name && y `containsFree` name
-containsFree (App x y) name = x `containsFree` name || y `containsFree` name
-containsFree (Pair x y z w) name = x `containsFree` name || w `containsFree` name
-containsFree (Fst x) name = x `containsFree` name
-containsFree (Snd x) name = x `containsFree` name
-containsFree (If x y z) name = x `containsFree` name || y `containsFree` name || z `containsFree` name
-containsFree (Let str x y z) name = y `containsFree` name || str /= name && z `containsFree` name
-containsFree (Control x) name = x `containsFree` name
+containsFree : RuntimeSyntax -> String -> Bool
+containsFree t = match [go, go2] t.unFix.any where
+  go : TermF RuntimeSyntax -> String -> Bool
+  go (Extern str x) name = False
+  go (Var str x) name = str == name
+  go (Lam str _ _ y) name = str /= name && y `containsFree` name
+  go (App x y) name = x `containsFree` name || y `containsFree` name
+  go (Pair x y z w) name = x `containsFree` name || w `containsFree` name
+  go (Fst x) name = x `containsFree` name
+  go (Snd x) name = x `containsFree` name
+  go (If x y z) name = x `containsFree` name || y `containsFree` name || z `containsFree` name
+  go (Let str x y z) name = y `containsFree` name || str /= name && z `containsFree` name
+  go (Control x) name = x `containsFree` name
+  go (Boolean _) _ = False
+  go2 : RuntimeValueF RuntimeSyntax -> String -> Bool
+  go2 (Closure v b _) name = v /= name && b `containsFree` name
 
-rename : Term -> String -> String -> Term
-rename t@(Var name n) x y = if name == x then Var y n else t
-rename t@(Lam name n b) x y = if name == x then t else Lam name n (rename b x y)
-rename (Let name n v b) x y = Let name n (rename v x y) (if name == x then b else (rename b x y))
-rename (App f a) x y = App (rename f x y) (rename a x y)
-rename (Pair f m n s) x y = Pair (rename f x y) m n (rename s x y)
-rename (Fst p) x y = Fst (rename p x y)
-rename (Snd p) x y = Snd (rename p x y)
-rename (If c t f) x y = If (rename c x y) (rename t x y) (rename f x y)
-rename (Control t) x y = Control (rename t x y)
-rename t@(Extern _ _) _ _ = t
+Ctxt : Type
+Ctxt = SortedMap String (Annotation, ExpTy)
 
-covering
-sub : Term -> String -> Term -> Term
-sub body@(Var str x) var val = if var == str then Var var x else body
-sub body@(Lam str x y) var val =
-  if var == str then body else
-  if val `containsFree` str then
-    let renamedVar = str ++ "'" in
-    sub (Lam renamedVar x (rename y str renamedVar)) var val
-  else Lam str x (sub y var val)
-sub (App x y) var val = App (sub x var val) (sub y var val)
-sub (Pair x y z w) var val = Pair (sub x var val) y z (sub w var val)
-sub (Fst x) var val = Fst (sub x var val)
-sub (Snd x) var val = Snd (sub x var val)
-sub (If x y z) var val = If (sub x var val) (sub y var val) (sub z var val)
-sub (Let str x y z) var val =
-  if var == str then Let str x (sub y var val) z else
-  if val `containsFree` str then
-    let renamedVar = str ++ "'" in
-    sub (Let renamedVar x y (rename z str renamedVar)) var val
-  else Let str x (sub y var val) (sub z var val)
-sub (Control x) var val = Control (sub x var val)
-sub body@(Extern _ _) _ _ = body
+filter : Ord k => (k -> v -> Bool) -> SortedMap k v -> SortedMap k v
+filter p xs = fromList $ filter (uncurry p) (toList xs)
 
-isValueTyped : Term -> Bool
+restrict : Ctxt -> Annotation -> Ctxt
+restrict ctxt n = filter (const ((<= n) . fst)) ctxt
+
+TypedTerm : Type
+TypedTerm = Fix (((Annotation, ExpTy), ) . TermF)
+
+type : MonadError String m => Ctxt -> Term -> m TypedTerm
+type ctxt = go . .unFix where
+  go : TermF Term -> m TypedTerm
+  go (Var v n) = do
+    Just (ann, ty) <- pure $ lookup v (restrict ctxt n)
+    | Nothing => throwError "\{v} cannot be used at class \{show n}"
+    pure $ MkFix ((n, ty), Var v n)
+  go (Extern ext ty) = pure $ MkFix ((1, CTy ty), Extern ext ty)
+  go (Boolean b) = pure $ MkFix ((1, ValTy Boolean), Boolean b)
+  go (Lam v n t b) = do
+    b@(MkFix ((1, ty), _)) <- type (insert v (n, ValTy t) ctxt) b
+    | _ => throwError "cannot return second-class value from lambda"
+    pure $ MkFix ((2, ValTy $ Closure t n ty), Lam v n t b)
+
+isValueTyped : RuntimeSyntax -> Bool
+
+lookup : String -> Stack -> Maybe RuntimeSyntax
+lookup var s = List.lookup var (rights s)
 
 ||| Take one step in evaluation. Errors are handled in a monad.
 covering
-step : MonadState CompilerCtxt m => MonadError String m => Configuration -> m Configuration
-step c@((Var str x), e) =
-  throwError ("Unbound local:" ++ str)
-step c@((App x y), e) =
-  if isValue x then
-    case x of
-      Lam v n t =>
-        if isValue y then pure (sub t v y, e) else pure (y, App x :: e)
-      _ => throwError "Can call only lambdas"
-  else pure (x, (\res => App res y) :: e)
-step c@(t@(Pair x y z w), e) =
-  pure $ if isValue x then
-    if isValue w then
-      case e of
-        f :: e => (f t, e)
-        [] => c
-    else (w, Pair x y z :: e)
-  else (x, (\res => Pair res y z w) :: e)
-step ((Fst x), e) =
-  if isValue x then
-    case x of
-      Pair first _ _ _ => pure (first, e)
-      _ => throwError "fst requires a pair"
-  else pure (x, Fst :: e)
-step ((Snd x), e) =
-  if isValue x then
-    case x of
-      Pair _ _ _ second => pure (second, e)
-      _ => throwError "snd requires a pair"
-  else pure (x, Snd :: e)
-step ((If x y z), e) =
-  if isValue x then
-    case x of
-      Extern "true" _ => pure (y, e)
-      Extern "false" _ => pure (z, e)
-      _ => throwError "Conditions must be boolean"
-  else pure (x, (\res => If res y z) :: e)
-step ((Let str x y z), e) = do
-  markNameUsed str
-  pure $ if isValue y then
-    (sub z str y, e)
-  else (y, (\res => Let str x res z) :: e)
-step ((Control x), e@[]) =
-  if isValue x then
-    case x of
-      Lam kVar _ (App (Var kVar2 _) t) =>
-        if kVar == kVar2 && not (t `containsFree` kVar) then
-          pure (t, e)
-        else throwError "Invalid top-level use of control operator"
-      _ => throwError "Control operator expects a lambda as an argument"
-  else pure (x, Control :: e)
-step ((Control x), f :: e) =
-  if isValue x then
-    case x of
-      Lam kVar n t =>
-        if isValueTyped (f (Control x)) then do
-          jVar <- genName "j"
+step : MonadState CompilerCtxt m => MonadError String m => MonadReader (SortedMap String (RuntimeSyntax -> m RuntimeSyntax)) m => Configuration -> m Configuration
+step c@(t, e) = match [stepTerm, stepRuntimeValue] t.unFix.any where
+  stepTerm : TermF RuntimeSyntax -> m Configuration
+  stepTerm (Var str x) =
+    case lookup str e of
+      Just val => pure (val, e)
+      Nothing => throwError ("Unbound local: " ++ str)
+  stepTerm (App x y) =
+    if isValue x then
+      if isValue y
+        then match [
+          \case
+            Extern s _ => do
+              Just extern <- asks (lookup s)
+              | _ => throwError "Cannot step extern \{s}"
+              res <- extern y
+              pure (res, e)
+            _ => throwError "Can call only closures",
+          \case
+            Closure v b env =>
+              pure (b, Right (v, y) :: map Right env ++ e)
+        ] x.unFix.any
+        else pure (the RuntimeSyntax y, Left (fixInject . App x) :: e)
+    else pure (x, Left (\res => fixInject $ App res y) :: e)
+  stepTerm (Pair x y z w) =
+    pure $ if isValue x then
+      if isValue w then
+        case e of
+          Left f :: e => (f t, e)
+          Right _ :: e => (t, e)
+          [] => c
+      else (w, Left (fixInject . Pair x y z) :: e)
+    else (x, Left (\res => fixInject $ Pair res y z w) :: e)
+  stepTerm (Fst x) =
+    if isValue x
+      then match [
+        \case
+          Pair first _ _ _ => pure (first, e)
+          _ => throwError "fst requires a pair",
+        \_ => throwError "fst requires a pair"
+      ] x.unFix.any
+      else pure (x, Left (fixInject . Fst) :: e)
+  stepTerm (Snd x) =
+    if isValue x
+      then match [
+        \case
+          Pair _ _ _ second => pure (second, e)
+          _ => throwError "snd requires a pair",
+        \_ => throwError "snd requires a pair"
+      ] x.unFix.any
+      else pure (x, Left (fixInject . Snd) :: e)
+  stepTerm (If x y z) =
+    if isValue x then
+      match [
+        \case
+          Boolean True => pure (y, e)
+          Boolean False => pure (z, e)
+          _ => throwError "Conditions must be boolean",
+        \_ => throwError "Conditions must be boolean"
+      ] x.unFix.any
+    else pure (x, Left (\res => fixInject $ If res y z) :: e)
+  stepTerm (Let str x y z) = do
+    pure $
+      if isValue y
+      then (z, Right (str, y) :: e)
+      else (y, Left (\res => fixInject $ Let str x res z) :: e)
+  stepTerm t@(Control x) =
+    case e of
+      [] =>
+        if isValue x then do
+          Just (Closure kVar b _) <- pure (the (Maybe (RuntimeValueF _)) $ getAltLayer x)
+          | _ => throwError "Control operator expects a lambda as an argument"
+          let invalidUse = throwError "Invalid top-level use of control operator"
+          Just (App f t) <- pure (the (Maybe (TermF _)) $ getAltLayer b)
+          | _ => invalidUse
+          Just (Var kVar2 _) <- pure (the (Maybe (TermF _)) $ getAltLayer f)
+          | _ => invalidUse
+          if kVar == kVar2 && not (t `containsFree` kVar)
+            then pure (t, e)
+            else invalidUse
+        else pure (x, Left (fixInject . Control) :: e)
+      (Right _ :: e) => the (m Configuration) $ pure {f = m} (fixInject t, e)
+      (Left f :: e) =>
+        if isValue x then do
+          Just (Closure kVar t _) <- pure (the (Maybe (RuntimeValueF _)) $ getAltLayer x)
+          | _ => throwError "Control operator expects a lambda as an argument"
+          -- if isValueTyped (f (fixInject $ Control x))
+            -- then do
+          -- jVar <- genName "j"
           xVar <- genName "x"
-          pure (Control (Lam jVar 2 (sub t kVar (Lam xVar 1 (App (Var jVar 2) (f (Var xVar)))))), e)
-        else throwError "Single-frame context must have a value type"
-      _ => throwError "Control operator expects a lambda as an argument"
-  else pure (x, Control :: e)
-step c@(t@(Extern s _), e) =
-  if s `elem` ["true", "false"] then
+          pure (fixInject $ Control (fixInject $ Lam "j" 2 (fixInject $ Let kVar 2 (fixInject $ Lam xVar 1 (fixInject (App (fixInject $ (Var "j" 2)) (f (fixInject $ Var xVar 1))))) t)), e)
+            -- else throwError "Single-frame context must have a value type"
+        else pure (x, Left (fixInject . Control) :: e)
+  stepTerm (Lam v n t) = pure (fixInject $ Closure v t $ rights e, e)
+  stepTerm _ =
     pure $ case e of
-      f :: e => (f t, e)
-      [] => c
-  else throwError "Cannot step externs"
-step ((Lam v n t), e) = ?h_10
+      Left f :: e => (f t, e)
+      Right _ :: e => (t, e)
+      _ => c
+  stepRuntimeValue : RuntimeValueF RuntimeSyntax -> m Configuration
+  stepRuntimeValue _ =
+    pure $ case e of
+      Left f :: e => (f t, e)
+      Right _ :: e => (t, e)
+      _ => c
 
 {-
 record Program where
