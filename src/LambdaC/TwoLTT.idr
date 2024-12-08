@@ -6,6 +6,7 @@ import Control.Monad.Maybe
 import Control.Monad.State
 import Data.List.Elem
 import Data.List.Quantifiers
+import Data.SOP
 import Data.Variant.Fix
 import Data.Vect
 import Data.Vect.Elem
@@ -86,7 +87,13 @@ lift a var = Expr tyvar var a
 
 record Gen (0 u : U) (0 var : VarTy tyvar) (a : Type) where
   constructor MkGen
-  unGen : {0 r : Ty tyvar u} -> (a -> lift r var) -> lift r var
+  unGen : {r : Ty tyvar u} -> (a -> lift r var) -> lift r var
+
+runGen : {a : Ty tyvar u} -> Gen u var (lift a var) -> lift a var
+runGen gen = unGen gen id
+
+gen : {a : _} -> Expr tyvar var a -> Gen u var (Expr tyvar var a)
+gen e = MkGen $ \k => Let _ e (\x => k (Var x))
 
 interface Monad m => MonadGen (0 u : U) (0 var : VarTy tyvar) m | m where
   liftGen : Gen u var a -> m a
@@ -129,6 +136,15 @@ List a = Fix (\list => Sum [One, Product [a, TyVar list]])
 {a : ValTy tyvar} -> Split tyvar (List a) where
   SplitTo var = Maybe (lift a var, lift (List a) var)
   split as = MkGen $ \k => Case (Unroll as %search) [\_ => k Nothing, \cons => k (Just (First (Var cons), First (Rest (Var cons))))]
+
+-- Copied from https://github.com/idris-lang/Idris2/blob/ec74792a49bf4d22509172d1f03d153ffca1b95c/libs/papers/Search/Tychonoff/PartI.idr#L48
+export infix 0 <->
+record (<->) (a, b : Type) where
+  constructor MkIso
+  forwards  : a -> b
+  backwards : b -> a
+  inverseL  : (x : a) -> backwards (forwards x) === x
+  inverseR  : (y : b) -> forwards (backwards y) === y
 
 namespace TreeExample
   TreeF : ValTy tyvar -> tyvar -> ValTy tyvar
@@ -235,19 +251,103 @@ namespace TreeExample
           (Just n', Just m') => pure $ App (App (Var eq) n') m'
           _ => pure false) id
 
-  {-
+  0 U_SOP : Type -> Type
+  U_SOP tyvar = List (List (ValTy tyvar))
+
+  0 El_SOP : U_SOP tyvar -> VarTy tyvar -> Type
+  El_SOP a var = SOP (flip lift var) a
+
+  interface IsSOP (0 a : Type) where
+    Rep : U_SOP tyvar
+    rep : {0 tyvar : Type} -> {0 var : VarTy tyvar} -> a <-> El_SOP (Rep {tyvar}) var
+
+  sopEta : (x : SOP_ k f xs) -> MkSOP (unSOP x) === x
+  sopEta (MkSOP sop) = Refl
+
+  IsSOP a => IsSOP (Maybe a) where
+    Rep = [] :: Rep {a}
+    rep = MkIso {
+      forwards = \case
+        Nothing => MkSOP (Z [])
+        Just x => MkSOP (S (unSOP (rep.forwards x))),
+      backwards = \case
+        MkSOP (Z []) => Nothing
+        MkSOP (S sop) => Just (rep.backwards (MkSOP sop)),
+      inverseL = \case
+        Nothing => Refl
+        Just x =>
+          cong Just $
+          let etaPrf = sopEta (rep.forwards x) in
+          replace {p = \sop => rep.backwards sop === x, x = rep.forwards x, y = MkSOP (unSOP (rep.forwards x))} (sym etaPrf) (rep.inverseL x),
+      inverseR = \case
+        MkSOP (Z []) => Refl
+        MkSOP (S sop) =>
+          cong (MkSOP . S . unSOP) $ rep.inverseR (MkSOP sop)
+    }
+
+  0 Fun_SOPLift : U_SOP tyvar -> Ty tyvar u -> VarTy tyvar -> Type
+  Fun_SOPLift [] r _ = ()
+  Fun_SOPLift (a :: b) r var = (lift (snd $ foldr (\d, uc => (Comp ** Fun d $ snd uc)) (the (u : U ** Ty tyvar u) (u ** r)) a) var, Fun_SOPLift b r var)
+
+  covering
+  tabulate : {a : _} -> (El_SOP a var -> lift r var) -> Fun_SOPLift a r var
+  tabulate {a = []} f = ()
+  tabulate {a = ([] :: xs)} f = (f $ MkSOP $ Z [], tabulate {a = xs} $ \(MkSOP sop) => f (MkSOP $ S sop))
+  tabulate {a = ((x :: ys) :: xs)} f =
+    let rec = TreeExample.tabulate $ \(MkSOP sop) => f (MkSOP $ S sop)
+        rec2 = \x => tabulate {a = (ys :: xs)} $ \(MkSOP sop) => f $ MkSOP $ case sop of
+          Z p => Z (x :: p)
+          S p => S p in
+    (Lam _ $ \arg => (fst $ rec2 (Var arg)), rec)
+
+  Uninhabited (SOP f []) where
+    uninhabited (MkSOP sum) impossible
+
+  covering
+  index : {a : _} -> Fun_SOPLift a r var -> (El_SOP a var -> lift r var)
+  index {a = []} fs = absurd
+  index {a = ([] :: xs)} (res, fs) = \case
+    MkSOP (Z _) => res
+    MkSOP (S p) => index fs (MkSOP p)
+  index {a = ((x :: ys) :: xs)} (f, fs) = \case
+    MkSOP (Z (first :: rest)) =>
+      let app = App f first
+          rec = index {a = (ys :: xs)} (app, fs) in
+      rec (MkSOP (Z rest))
+    MkSOP (S p) => index fs (MkSOP p)
+
+  %unbound_implicits off
+  genFun_SOPLift : {0 tyvar : Type} -> {a : U_SOP tyvar} -> {v : U} -> {r : Ty tyvar v} -> {0 u : U} -> {0 var : VarTy tyvar} -> Fun_SOPLift a r var -> Gen u var (Fun_SOPLift a r var)
+  genFun_SOPLift {a = []} () = pure ()
+  genFun_SOPLift {a = (_ :: a)} (f, fs) = [| (gen f, genFun_SOPLift fs) |]
+  %unbound_implicits on
+
+  interface Monad m => MonadJoin m where
+    join : IsSOP a => m a -> m a
+
+  covering
+  {u : U} -> MonadJoin (Gen u var) where
+    join ma = MkGen $ \k => runGen $ do
+      joinPoints <- genFun_SOPLift (tabulate (k . rep.backwards))
+      a <- ma
+      pure $ index joinPoints (rep.forwards a)
+
+  MonadJoin m => MonadJoin (MaybeT m) where
+    join (MkMaybeT ma) = MkMaybeT (join ma)
+
+    {-
   f : Expr tyvar var (Fun (Tree Nat) (StateT (List Nat) (MaybeT Identity) (Tree Nat)))
   f = LetRec _ (\f =>
     Lam (Tree Nat) $ \t => down $ do
-      treeSplit <- liftGen $ split (the (Expr tyvar var ( $ Tree Nat)) $ Var t)
+      treeSplit <- liftGen $ split (the (Expr tyvar var (Tree Nat)) $ Var t)
       case treeSplit of
         Leaf => pure leaf
         Node n l r => do
-          case !(liftGen $ split (n == 0)) of
+          case !(liftGen $ split (App (App (==) n) 0)) of
             True => fail
             False => pure ()
           ns <- get
-          n <- join $ case !(liftGen $ split $ the (Expr tyvar var ( (List Nat))) ns) of
+          n <- join $ case !(liftGen $ split $ the (Expr tyvar var (List Nat)) ns) of
             Nothing => pure n
             Just (n, ns) => do
               put ns
