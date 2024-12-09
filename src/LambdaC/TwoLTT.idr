@@ -3,6 +3,7 @@
 module LambdaC.TwoLTT
 
 import Control.Monad.Maybe
+import Control.Monad.Reader
 import Control.Monad.State
 import Data.List.Elem
 import Data.List.Quantifiers
@@ -10,6 +11,7 @@ import Data.SOP
 import Data.Variant.Fix
 import Data.Vect
 import Data.Vect.Elem
+import Syntax.WithProof
 
 %default total
 
@@ -285,6 +287,47 @@ namespace TreeExample
           cong (MkSOP . S . unSOP) $ rep.inverseR (MkSOP sop)
     }
 
+  distributeSop : List a -> List (List a) -> List (List a)
+  distributeSop pa [] = []
+  distributeSop pa (pb :: pbs) = (pa ++ pb) :: distributeSop pa pbs
+
+  cartesianSop : (sopa, sopb : List (List a)) -> List (List a)
+  cartesianSop [] _ = []
+  cartesianSop (pa :: pas) sopb = distributeSop pa sopb ++ cartesianSop pas sopb
+
+  leftSop : SOP f kss -> SOP f (kss ++ lss)
+  leftSop (MkSOP (Z a)) = MkSOP (Z a)
+  leftSop (MkSOP (S a)) = MkSOP (S (unSOP (leftSop $ MkSOP a)))
+
+  rightSop : {lss : List (List a)} -> SOP f kss -> SOP f (lss ++ kss)
+  rightSop {lss = []} x = x
+  rightSop {lss = ls :: lss} x = MkSOP (S (unSOP (rightSop x)))
+
+  pairPSop : NP f ks -> SOP f kss -> SOP f (distributeSop ks kss)
+  pairPSop x (MkSOP (Z y)) = MkSOP (Z (append x y))
+  pairPSop x (MkSOP (S y)) = MkSOP (S (unSOP (pairPSop x (MkSOP y))))
+
+  sopProduct : {kss, lss : List (List k)} -> SOP f kss -> SOP f lss -> SOP f (cartesianSop kss lss)
+  sopProduct {kss = .(ks :: kss)} (MkSOP (Z v)) y = leftSop (pairPSop v y)
+  sopProduct (MkSOP (S x)) y = rightSop (sopProduct (MkSOP x) y)
+
+  unpairSop : (kss, lss : List (List k)) -> SOP f (cartesianSop kss lss) -> (SOP f kss, SOP f lss)
+  unpairSop kss lss sop = ?fgngfn
+
+  -- https://github.com/AndrasKovacs/staged/blob/fe63229afeaec8caad3f46e1a33337fdab712982/icfp24paper/supplement/agda-cftt/SOP.agda#L286
+  IsSOP a => IsSOP b => IsSOP (a, b) where
+    Rep = cartesianSop (Rep {a}) (Rep {a = b})
+    rep = MkIso {
+      forwards = \(x, y) =>
+        let xSop = rep.forwards x
+            ySop = rep.forwards y in
+        sopProduct xSop ySop,
+      backwards = \x => case @@(unpairSop (Rep {a}) (Rep {a = b}) x) of
+        ((x, y) ** prf) => ?fggd,  -- rewrite prf in (rep.backwards x, rep.backwards y),
+      inverseL = \x => ?h3,
+      inverseR = \x => ?h4
+    }
+
   0 Fun_SOPLift : U_SOP tyvar -> Ty tyvar u -> VarTy tyvar -> Type
   Fun_SOPLift [] r _ = ()
   Fun_SOPLift (a :: b) r var = (lift (snd $ foldr (\d, uc => (Comp ** Fun d $ snd uc)) (the (u : U ** Ty tyvar u) (u ** r)) a) var, Fun_SOPLift b r var)
@@ -334,6 +377,12 @@ namespace TreeExample
 
   MonadJoin m => MonadJoin (MaybeT m) where
     join (MkMaybeT ma) = MkMaybeT (join ma)
+
+  MonadJoin m => MonadJoin (ReaderT r m) where
+    join (MkReaderT ma) = MkReaderT (join . ma)
+
+  MonadJoin m => IsSOP s => MonadJoin (StateT s m) where
+    join (ST ma) = ST (join . ma)
 
     {-
   f : Expr tyvar var (Fun (Tree Nat) (StateT (List Nat) (MaybeT Identity) (Tree Nat)))
