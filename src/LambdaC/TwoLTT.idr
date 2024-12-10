@@ -148,6 +148,9 @@ record (<->) (a, b : Type) where
   inverseL  : (x : a) -> backwards (forwards x) === x
   inverseR  : (y : b) -> forwards (backwards y) === y
 
+Uninhabited (SOP f []) where
+  uninhabited (MkSOP sum) impossible
+
 namespace TreeExample
   TreeF : ValTy tyvar -> tyvar -> ValTy tyvar
   TreeF a = (\tree => Sum [One, Product [a, TyVar tree, TyVar tree]])
@@ -342,9 +345,6 @@ namespace TreeExample
           Z p => Z (x :: p)
           S p => S p in
     (Lam _ $ \arg => (fst $ rec2 (Var arg)), rec)
-
-  Uninhabited (SOP f []) where
-    uninhabited (MkSOP sum) impossible
 
   covering
   index : {a : _} -> Fun_SOPLift a r var -> (El_SOP a var -> lift r var)
