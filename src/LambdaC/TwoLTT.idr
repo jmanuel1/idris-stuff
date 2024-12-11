@@ -243,6 +243,10 @@ namespace TreeExample
   false : Expr tyvar var Bool
   false = Right $ Left TT
 
+  Split tyvar Bool where
+    SplitTo var = Bool
+    split b = MkGen $ \k => Case b [\_ => k True, \_ => k False]
+
   Split tyvar Nat where
     SplitTo var = Maybe (Expr tyvar var Nat)
     split n = MkGen $ \k => Case (Unroll n %search) [\_ => k Nothing, \n' => k (Just (Var n'))]
