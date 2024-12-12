@@ -318,8 +318,32 @@ namespace TreeExample
   sopProduct {kss = .(ks :: kss)} (MkSOP (Z v)) y = leftSop (pairPSop v y)
   sopProduct (MkSOP (S x)) y = rightSop (sopProduct (MkSOP x) y)
 
+  -- Using this instead of `Data.SOP.NP.narrow` to make proofs easier.
+  unpairP : {a : List k} -> NP f (a ++ b) -> (NP f a, NP f b)
+  unpairP {a = []} x = ([], x)
+  unpairP {a = (a :: as)} (x :: y) =
+    mapFst (x ::) $ unpairP {a = as} y
+
+  unpairPNs : (ks : List k) -> (lss : List (List k)) -> NS (NP f) (distributeSop ks lss) -> (NP f ks, NS (NP f) lss)
+  unpairPNs _ [] s impossible
+  unpairPNs ks (x :: xs) (Z p) = mapSnd Z (unpairP p)
+  unpairPNs ks (x :: xs) (S s) = mapSnd S (unpairPNs _ _ s)
+
   unpairSop : (kss, lss : List (List k)) -> SOP f (cartesianSop kss lss) -> (SOP f kss, SOP f lss)
-  unpairSop kss lss sop = ?fgngfn
+  unpairSop (ks :: kss) (ls :: lss) (MkSOP (Z v)) =
+    bimap (MkSOP . Z) (MkSOP . Z) (unpairP v)
+  unpairSop (ks :: kss) (ls :: lss) (MkSOP (S x)) =
+    either
+      (\x =>
+        the (SOP f (ks :: kss), SOP f (ls :: lss)) $ let unpaired = unpairPNs _ _ x in (MkSOP (Z (fst unpaired)), MkSOP (S (snd unpaired))))
+      (\x => mapFst (MkSOP . S . unSOP) (unpairSop _ _ (MkSOP x))) $
+      splitNs (distributeSop ks lss) x
+  unpairSop [] _ (MkSOP sop) impossible
+  unpairSop (ks :: kss) [] sop = absurd (snd (unpairSop kss [] sop))
+
+  0 pBeta : (v : NP f ks) -> {x : NP f ls} -> unpairP (append v x) = (v, x)
+  pBeta [] = Refl
+  pBeta (v :: vs) = cong (mapFst (v ::)) (pBeta vs)
 
   -- https://github.com/AndrasKovacs/staged/blob/fe63229afeaec8caad3f46e1a33337fdab712982/icfp24paper/supplement/agda-cftt/SOP.agda#L286
   IsSOP a => IsSOP b => IsSOP (a, b) where
