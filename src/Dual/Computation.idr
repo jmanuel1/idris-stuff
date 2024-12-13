@@ -72,6 +72,7 @@ IdrisCat = MkCategory {
     Refl
 }
 
+export
 etaPair : (p : (a, b)) -> (fst p, snd p) === p
 etaPair (a, b) = Refl
 

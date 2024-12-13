@@ -11,6 +11,7 @@ import Data.SOP
 import Data.Variant.Fix
 import Data.Vect
 import Data.Vect.Elem
+import Dual.Computation
 import Syntax.WithProof
 
 %default total
@@ -345,6 +346,12 @@ namespace TreeExample
   pBeta [] = Refl
   pBeta (v :: vs) = cong (mapFst (v ::)) (pBeta vs)
 
+
+  0 pairPEta : (ks, ls : List k) -> (p : NP f (ks ++ ls)) -> append {ks, ks' = ls} (fst (unpairP {a = ks, b = ls} p)) (snd (unpairP {a = ks, b = ls} p)) = p
+  pairPEta [] ls p = Refl
+  pairPEta (k :: ks) ls (v :: vs) =
+    replace {p = \up => append (fst (bimap (\arg => v :: arg) id up)) (snd (bimap (\arg => v :: arg) id up)) = v :: vs} (etaPair (unpairP vs)) $
+    cong (v ::) $ pairPEta ks ls vs
   -- https://github.com/AndrasKovacs/staged/blob/fe63229afeaec8caad3f46e1a33337fdab712982/icfp24paper/supplement/agda-cftt/SOP.agda#L286
   IsSOP a => IsSOP b => IsSOP (a, b) where
     Rep = cartesianSop (Rep {a}) (Rep {a = b})
